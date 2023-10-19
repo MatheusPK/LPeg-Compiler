@@ -1,0 +1,7 @@
+fun foo() {
+    return 10;
+}
+
+fun main() {
+    return;
+}
