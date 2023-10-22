@@ -109,7 +109,8 @@ grammar.prog = lpeg.P {"defs",
         + Id * Eq * exp / node("ass", "id", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
-        + call,
+        + call
+        + Rw"return" * (exp + lpeg.C"") / node("return", "e"),
     call = Id * OP * CP / node("call", "name"),
     primary = integer / node("number", "num") 
         + OP * exp * CP 

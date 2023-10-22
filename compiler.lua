@@ -18,7 +18,10 @@ local Compiler = {
     },
     tempCount = 0,
     vars = {},
-    funcs = {}
+    funcs = {
+      ["main"] = {exists = false, retType = "int"}
+    },
+    currentFunc = nil
 }
 
 function Compiler:newTemp()
@@ -39,9 +42,9 @@ function Compiler.emit(content, ...)
 end
   
   
-  function Compiler:codeLabel (label)
-    self.emit("%s:", label)
-  end
+function Compiler:codeLabel (label)
+  self.emit("%s:", label)
+end
 
 
 function Compiler:codeJmp (label)
@@ -64,6 +67,11 @@ function Compiler:findVar(id)
         end
     end
     error("variable not found " .. id)
+end
+
+function Compiler:isValidReturnType(retType)
+    local expectedReturnType = self.funcs[self.currentFunc].retType
+    return expectedReturnType == retType, expectedReturnType
 end
 
 function Compiler:codeExp(exp)
@@ -95,7 +103,6 @@ function Compiler:codeExp(exp)
         self.emit("%s = zext i1 %s to i32", res2, res1)
         return res2
     elseif tag == "call" then
-        print("To no call")
         print(exp.name)
     else
         error(tag .. ": expression not yet implemented")
@@ -119,13 +126,22 @@ function Compiler:codeStat (st)
           error("unknown function " .. st.name)
         end
         local reg = self:newTemp()
-        io.write(string.format("%s = call i32 @%s()\n", reg, st.name))
+        self.emit("%s = call i32 @%s()\n", reg, st.name)
     elseif tag == "return" then
-        local exp = nil
-        if st.e then
-            exp = self:codeExp(st.e)
+        local returnExp = "void"
+        local returnType = "void"
+
+        if st.e and st.e ~= "" then
+          returnExp = self:codeExp(st.e)
+          returnType = "int"
         end
-        self.emit("ret i32 %s", exp or '0')
+
+        local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
+        if not isValidReturnType then
+          error("wrong return type, function should be returning " .. expectedReturnType .. " but is returning " .. returnType)
+        end
+
+        self.emit("ret i32 %s", returnExp)
     elseif tag == "if" then
       local Lthen = self:newLabel()
       local Lelse = self:newLabel()
@@ -185,17 +201,13 @@ define internal void @printI(i32 %x) {
 
 ]]
 
-local poscode = [[
-  ret i32 0
-}
-]]
-
 
 function Compiler:codeFunc (func)
-    self.funcs[func.name] = true
-    io.write(string.format("define i32 @%s() {\n", func.name))
+    self.funcs[func.name].exists = true
+    self.currentFunc = func.name
+    self.emit("define i32 @%s() {\n", func.name)
     self:codeStat(func.body)
-    io.write(poscode)  
+    io.write("}")
 end
 
 
@@ -203,7 +215,7 @@ function Compiler:codeProg (prog)
     for i = 1, #prog do
     self:codeFunc(prog[i])
     end
-    if not self.funcs["main"] then
+    if not self.funcs["main"].exists then
     error("missing main function")
     end
 end
@@ -218,5 +230,6 @@ if not tree then
     string.sub(input, grammar.lastpos, grammar.lastpos + 10), ">>\n")
     os.exit(1)
 end
+
 io.write(premable)
 local e = Compiler:codeProg(tree)

@@ -7,7 +7,8 @@ define internal void @printI(i32 %x) {
   ret void
 }
 
-define i32 @main() {
+  define i32 @main() {
+
   %T0 = alloca i32
   store i32 0, i32* %T0
   br label %L1
