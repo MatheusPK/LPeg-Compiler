@@ -46,6 +46,7 @@ local CP = ")" * S
 local OB = "{" * S
 local CB = "}" * S
 local SC = ";" * S
+local C = ":" * S
 local Prt = "@" * S
 local Eq = "=" * S
 
@@ -83,6 +84,7 @@ local diferenca = lpeg.C(lpeg.P('~=')) * S
 local opComp = (igualdade + diferenca + maiorIgual + menorIgual + maior + menor)
 
 local primary = lpeg.V "primary"
+local postfix = lpeg.V"postfix"
 local factor = lpeg.V "factor"
 local expM = lpeg.V "expM"
 local expA = lpeg.V "expA"
@@ -99,7 +101,7 @@ grammar.lastpos = 0
 
 grammar.prog = lpeg.P {"defs",
     defs = lpeg.Ct(def^1),
-    def = Rw"fun" * Id * OP * CP * block / node("func", "name", "body"),
+    def = Rw"fun" * Id * OP * CP * ((C * Id) + lpeg.C"") * block / node("func", "name", "type", "body"),
     stats = stat * (SC * stats)^-1 * SC^-1 / function (st, pg)
         return pg and {tag="seq", s1 = st, s2 = pg} or st
     end,
@@ -115,8 +117,9 @@ grammar.prog = lpeg.P {"defs",
     primary = integer / node("number", "num") 
         + OP * exp * CP 
         + Id / node("varId", "id"),
-    factor = opUn * factor / node("unarith", "op", "e") 
-        + primary,
+    postfix = call + primary,
+    factor = postfix
+            + opUn * factor / node("unarith", "op", "e"),
     expM = lpeg.Ct(factor * (opM * factor) ^ 0) / fold,
     expA = lpeg.Ct(expM * (opA * expM) ^ 0) / fold,
     expOp = lpeg.Ct(expA * (opComp * expA) ^ 0) / foldComp,

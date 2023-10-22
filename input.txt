@@ -1,8 +1,14 @@
-fun main() {
-    var x = 0;
-    while x <= 10 {
-        @x;
-        x = x + 1;
-    };
+fun foo2(): int {
+    return 3 * 3;
+}
+
+fun foo(): int {
+    @5;
+    @10;
+    return foo2();
+}
+
+fun main(): int {
+    @foo();
     return 0;
 }

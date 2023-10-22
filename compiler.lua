@@ -16,12 +16,14 @@ local Compiler = {
         ["=="] = "eq",
         ["~="] = "ne"
     },
+    types = {
+      ["int"] = "i32",
+      ["void"] = "void"
+    },
     tempCount = 0,
     vars = {},
-    funcs = {
-      ["main"] = {exists = false, retType = "int"}
-    },
-    currentFunc = nil
+    funcs = {},
+    currentFunc = {name = "", hasReturnStatement = false}
 }
 
 function Compiler:newTemp()
@@ -59,6 +61,18 @@ function Compiler:codeCond (exp, Ltrue, Lfalse)
     self.emit("br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
 end
 
+function Compiler:codeFuncCall(funcName)
+  if not self.funcs[funcName] then
+    error("Attempt to call a nil value '" .. funcName .. "'")
+  end
+
+  local retType = self.funcs[funcName].retType
+  local reg = self:newTemp()
+  self.emit("%s = call %s @%s()", reg, self.types[retType], funcName)
+
+  return reg
+end
+
 function Compiler:findVar(id)
     local vars = self.vars
     for i = #vars, 1, -1 do
@@ -70,7 +84,7 @@ function Compiler:findVar(id)
 end
 
 function Compiler:isValidReturnType(retType)
-    local expectedReturnType = self.funcs[self.currentFunc].retType
+    local expectedReturnType = self.funcs[self.currentFunc.name].retType
     return expectedReturnType == retType, expectedReturnType
 end
 
@@ -103,7 +117,13 @@ function Compiler:codeExp(exp)
         self.emit("%s = zext i1 %s to i32", res2, res1)
         return res2
     elseif tag == "call" then
-        print(exp.name)
+        local res = self:codeFuncCall(exp.name)
+
+        if self.funcs[exp.name].retType == "void" then
+          error("Attempt to call void function '" .. exp.name .. "' inside an expression")
+        end
+
+        return res
     else
         error(tag .. ": expression not yet implemented")
     end
@@ -123,12 +143,15 @@ function Compiler:codeStat (st)
       end
     elseif tag == "call" then
         if not self.funcs[st.name] then
-          error("unknown function " .. st.name)
+          error("Attempt to call a nil value '" .. st.name .. "'")
         end
+
         local reg = self:newTemp()
         self.emit("%s = call i32 @%s()\n", reg, st.name)
     elseif tag == "return" then
-        local returnExp = "void"
+        if self.currentFunc.hasReturnStatement then return end
+
+        local returnExp = ""
         local returnType = "void"
 
         if st.e and st.e ~= "" then
@@ -138,10 +161,12 @@ function Compiler:codeStat (st)
 
         local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
         if not isValidReturnType then
-          error("wrong return type, function should be returning " .. expectedReturnType .. " but is returning " .. returnType)
+          error("wrong return type, function '" .. self.currentFunc.name .. "' should be returning '" .. expectedReturnType .. "' but is returning '" .. returnType .. "'")
         end
 
-        self.emit("ret i32 %s", returnExp)
+        self.emit("ret %s %s", self.types[returnType] ,returnExp)
+
+        self.currentFunc.hasReturnStatement = true
     elseif tag == "if" then
       local Lthen = self:newLabel()
       local Lelse = self:newLabel()
@@ -203,11 +228,23 @@ define internal void @printI(i32 %x) {
 
 
 function Compiler:codeFunc (func)
-    self.funcs[func.name].exists = true
-    self.currentFunc = func.name
-    self.emit("define i32 @%s() {\n", func.name)
+    self.funcs[func.name] = {retType = func.type}
+    self.currentFunc.name = func.name
+    io.write(string.format("define %s @%s() {\n", self.types[func.type], func.name))
     self:codeStat(func.body)
-    io.write("}")
+
+    if func.type ~= 'void' and not self.currentFunc.hasReturnStatement then
+      error("Function '" .. func.name .. "' missing return statement")
+    end
+
+    if func.type == 'void' then
+      self.emit("ret void")
+    end
+
+    io.write("}\n")
+
+    self.currentFunc.name = ""
+    self.currentFunc.hasReturnStatement = false
 end
 
 
@@ -215,7 +252,7 @@ function Compiler:codeProg (prog)
     for i = 1, #prog do
     self:codeFunc(prog[i])
     end
-    if not self.funcs["main"].exists then
+    if not self.funcs["main"] then
     error("missing main function")
     end
 end
@@ -232,4 +269,5 @@ if not tree then
 end
 
 io.write(premable)
-local e = Compiler:codeProg(tree)
+-- print(pt.pt(tree))
+local e = Compiler:codeProg(tree) 
