@@ -1,7 +1,7 @@
-fun foo() {
-    return 10;
-}
-
 fun main() {
-    return;
+    var x = 0;
+    while x <= 10 {
+        @x;
+        x = x + 1;
+    }
 }

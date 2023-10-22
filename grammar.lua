@@ -93,7 +93,6 @@ local stat = lpeg.V "stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 local call = lpeg.V"call"
-local ret = lpeg.V"ret"
 local def = lpeg.V"def"
 
 grammar.lastpos = 0
@@ -110,8 +109,7 @@ grammar.prog = lpeg.P {"defs",
         + Id * Eq * exp / node("ass", "id", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
-        + call
-        + Rw"return" * exp^-1 / node("return", "e"), 
+        + call,
     call = Id * OP * CP / node("call", "name"),
     primary = integer / node("number", "num") 
         + OP * exp * CP 
