@@ -1,14 +1,27 @@
-fun foo2(): int {
-    return 3 * 3;
+fun fat(x): int {
+    if x == 0 {
+        return 1;
+    };
+
+    return x * fat(x - 1);
 }
 
-fun foo(): int {
-    @5;
-    @10;
-    return foo2();
+fun fatWhile(x): int {
+    if x == 0 {
+        return 1;
+    };
+    
+    var res = 1;
+    while x > 0 {
+        res = res * x; 
+        x = x - 1;
+    };
+
+    return res;
 }
 
 fun main(): int {
-    @foo();
+    @fat(5) + fat(4);
+    @fatWhile(5) + fatWhile(4);
     return 0;
 }

@@ -46,7 +46,8 @@ local CP = ")" * S
 local OB = "{" * S
 local CB = "}" * S
 local SC = ";" * S
-local C = ":" * S
+local CL = ":" * S
+local CM = "," * S
 local Prt = "@" * S
 local Eq = "=" * S
 
@@ -95,13 +96,15 @@ local stat = lpeg.V "stat"
 local stats = lpeg.V"stats"
 local block = lpeg.V"block"
 local call = lpeg.V"call"
+local arguments = lpeg.V"arguments"
+local parameters = lpeg.V"parameters"
 local def = lpeg.V"def"
 
 grammar.lastpos = 0
 
 grammar.prog = lpeg.P {"defs",
     defs = lpeg.Ct(def^1),
-    def = Rw"fun" * Id * OP * CP * ((C * Id) + lpeg.C"") * block / node("func", "name", "type", "body"),
+    def = Rw"fun" * Id * OP * arguments * CP * ((CL * Id) + lpeg.C"") * block / node("func", "name", "args", "type", "body"),
     stats = stat * (SC * stats)^-1 * SC^-1 / function (st, pg)
         return pg and {tag="seq", s1 = st, s2 = pg} or st
     end,
@@ -113,7 +116,9 @@ grammar.prog = lpeg.P {"defs",
         + Rw"while" * exp * block / node("while", "cond", "body")
         + call
         + Rw"return" * (exp + lpeg.C"") / node("return", "e"),
-    call = Id * OP * CP / node("call", "name"),
+    call = Id * OP * parameters * CP / node("call", "name", "params"),
+    arguments = lpeg.Ct((Id * (CM * Id)^0)^-1),
+    parameters = lpeg.Ct((exp * (CM * exp)^0)^-1),
     primary = integer / node("number", "num") 
         + OP * exp * CP 
         + Id / node("varId", "id"),
