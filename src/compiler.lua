@@ -1,5 +1,5 @@
-local grammar = require "grammar"
-local pt = require "pt"
+local grammar = require "src/grammar"
+local pt = require "src/pt"
 
 local Compiler = {
     binAOps = {
@@ -47,17 +47,20 @@ function Compiler.emit(content, ...)
   local finalContent = ... and string.format(content, ...) or  content
   io.write(finalContent .. "\n")
 end
-  
+
+function Compiler.error(error, ...)
+  local finalContent = ... and string.format(error, ...) or  error
+  io.stderr:write(finalContent .. "\n")
+  os.exit(1)
+end
   
 function Compiler:codeLabel (label)
   self.emit(ident(1) .. "%s:", label)
 end
 
-
 function Compiler:codeJmp (label)
     self.emit(ident() .. " br label %%%s", label)
-  end
-  
+end
   
 function Compiler:codeCond (exp, Ltrue, Lfalse)
     local reg = self:codeExp(exp)
@@ -69,11 +72,11 @@ end
 function Compiler:codeCall(funcName, params)
   local func = self.funcs[funcName]
   if not func then
-    error("Attempt to call a nil value '" .. st.name .. "'")
+    self.error("Attempt to call a nil value '%s'", func.name)
   end
 
   if #params ~= func.nArgs then
-    error("Expected " .. func.nArgs .. " parameters, but received " .. #params)
+    self.error("Expected %d parameters, but received %d", func.nArgs, #params)
   end
 
   local paramsString = ""
@@ -101,7 +104,7 @@ function Compiler:findVar(id)
             return vars[i].reg
         end
     end
-    error("variable not found " .. id)
+    self.error("variable not found '%s'", id)
 end
 
 function Compiler:isValidReturnType(retType)
@@ -140,7 +143,7 @@ function Compiler:codeExp(exp)
     elseif tag == "call" then
       return self:codeCall(exp.name, exp.params)
     else
-        error(tag .. ": expression not yet implemented")
+        self.error("'%s': expression not yet implemented", tag)
     end
 end
 
@@ -169,7 +172,7 @@ function Compiler:codeStat (st)
 
         local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
         if not isValidReturnType then
-          error("wrong return type, function '" .. self.currentFunc.name .. "' should be returning '" .. expectedReturnType .. "' but is returning '" .. returnType .. "'")
+          self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, expectedReturnType, returnType)
         end
 
         self.emit(ident() .. " ret %s %s", self.types[returnType] ,returnExp)
@@ -216,7 +219,7 @@ function Compiler:codeStat (st)
       local regV = self:findVar(st.id)
       self.emit(ident() .. " store i32 %s, i32* %s", regE, regV)
     else
-      error(tag .. ": statement not yet implemented")
+      self.error("'%s': statement not yet implemented", tag)
     end
   end
 
@@ -241,7 +244,7 @@ function Compiler:codeFunc (func)
     self:codeStat(func.body)
 
     if func.type ~= 'void' and not self.currentFunc.hasReturnStatement then
-      error("Function '" .. func.name .. "' missing return statement")
+      self.error("Function '%s' missing return statement", func.name)
     end
 
     if func.type == 'void' then
@@ -275,18 +278,14 @@ function Compiler:codeProg (prog)
     self:codeFunc(prog[i])
     end
     if not self.funcs["main"] then
-    error("missing main function")
+    self.error("missing main function")
     end
 end
 
 local input = io.read("a")
 local tree = grammar.prog:match(input)
-
 if not tree then
-    io.write("syntax error near <<" ..
-    string.sub(input, grammar.lastpos - 10, grammar.lastpos - 1) .. "|" ..
-    string.sub(input, grammar.lastpos, grammar.lastpos + 10), ">>\n")
-    os.exit(1)
+    Compiler.error("syntax error near <<%s|%s>>", string.sub(input, grammar.lastpos - 10, grammar.lastpos - 1),  string.sub(input, grammar.lastpos, grammar.lastpos + 10))
 end
 
 -- print(pt.pt(tree))

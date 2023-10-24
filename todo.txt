@@ -1,1 +1,8 @@
-2 - fazer uma funcao para mandar erro
+1 - criar saida para debug(arquivo)
+2 - passar o input por linha de comando para o compiler
+3 - bug quando usar else dentro de funcao e nao bota return depois
+4 - trocar parametro por argumento
+5 - mover pra fora do comiler constantes
+6 - codeCall -> Separar codeExp da string dos params
+7 - mover ident para o modulo e guardar estado do ident
+8 - tiar verificacao do hasREturnStatment

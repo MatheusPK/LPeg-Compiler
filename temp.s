@@ -72,7 +72,7 @@ LBB2_1:                                 ; %common.ret
 	mov	sp, x29
 	ldp	x29, x30, [sp], #16             ; 16-byte Folded Reload
 	ret
-LBB2_2:                                 ; %L18
+LBB2_2:                                 ; %L17
 	mov	x9, sp
 	sub	x8, x9, #16
 	mov	sp, x8

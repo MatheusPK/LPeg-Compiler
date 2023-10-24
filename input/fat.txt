@@ -9,8 +9,7 @@ fun fat(x): int {
 fun fatWhile(x): int {
     if x == 0 {
         return 1;
-    };
-    
+    } else {
     var res = 1;
     while x > 0 {
         res = res * x; 
@@ -18,6 +17,7 @@ fun fatWhile(x): int {
     };
 
     return res;
+    };
 }
 
 fun main(): int {

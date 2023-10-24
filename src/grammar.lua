@@ -1,5 +1,5 @@
 local lpeg = require "lpeg"
-local pt = require "pt"
+local pt = require "src/pt"
 
 local grammar = {}
 

@@ -34,11 +34,11 @@ define i32 @fatWhile(i32 %T14) {
    %T20 = icmp eq i32 %T19, 0
    %T21 = zext i1 %T20 to i32
    %T22 = icmp ne i32 %T21, 0
-   br i1 %T22, label %L16, label %L18
+   br i1 %T22, label %L16, label %L17
  L16:
    ret i32 1
    br label %L18
- L18:
+ L17:
    %T23 = alloca i32
    store i32 1, i32* %T23
    br label %L24
@@ -60,6 +60,9 @@ define i32 @fatWhile(i32 %T14) {
  L26:
    %T36 = load i32, i32* %T23
    ret i32 %T36
+   br label %L18
+ L18:
+ ret i32 0
 }
 define i32 @main() {
    %T37 = call i32 @fat(i32 5)
