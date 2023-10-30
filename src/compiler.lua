@@ -8,25 +8,61 @@ local Compiler = {
     currentFunc = {name = ""}
 }
 
+local types = {
+  ["double"] = "double",
+  ["int"] = "int",
+  ["void"] = "void",
+}
+
+local typeToLLVM = {
+  ["int"] = "i32",
+  ["double"] = "double"
+}
+
 local binAOps = {
-  ["+"] = "add",
-  ["-"] = "sub",
-  ["*"] = "mul",
-  ["/"] = "sdiv"
+  ["+"] = {
+    [types.int] = "add",
+    [types.double] = "fadd"
+  },
+  ["-"] = {
+    [types.int] = "sub",
+    [types.double] = "fsub"
+  },
+  ["*"] = {
+    [types.int] = "mul",
+    [types.double] = "fmul"
+  },
+  ["/"] = {
+    [types.int] = "sdiv",
+    [types.double] = "fdiv"
+  }
 }
 
 local binCOps = {
-  [">="] = "sge",
-  ["<="] = "sle",
-  [">"] = "sgt",
-  ["<"] = "slt",
-  ["=="] = "eq",
-  ["~="] = "ne"
-}
-
-local types = {
-  ["int"] = "i32",
-  ["void"] = "void"
+  [">="] = {
+    [types.int] = "sge",
+    [types.double] = "oge"
+  },
+  ["<="] = {
+    [types.int] = "sle",
+    [types.double] = "ole"
+  },
+  [">"] = {
+    [types.int] = "sgt",
+    [types.double] = "ogt"
+  },
+  ["<"] = {
+    [types.int] = "slt",
+    [types.double] = "olt"
+  },
+  ["=="] = {
+    [types.int] = "eq",
+    [types.double] = "oeq"
+  },
+  ["~="] = {
+    [types.int] = "ne",
+    [types.double] = "une"
+  }
 }
 
 function Compiler.ident(len) 
@@ -66,9 +102,9 @@ function Compiler:codeJmp (label)
 end
   
 function Compiler:codeCond (exp, Ltrue, Lfalse)
-    local reg = self:codeExp(exp)
+    local exp = self:codeExp(exp)
     local aux = self:newTemp()
-    self.emit(self.ident() .. " %s = icmp ne i32 %s, 0", aux, reg)
+    self.emit(self.ident() .. " %s = icmp ne i32 %s, 0", aux, exp.value)
     self.emit(self.ident() .. " br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
 end
 
@@ -100,17 +136,25 @@ function Compiler:codeCall(funcName, params)
   return reg
 end
 
-function Compiler:codeVar(id, reg, value)
-  self.emit(self.ident() .. " %s = alloca i32", reg) 
-  self.emit(self.ident() .. " store i32 %s, i32* %s", value, reg)
-  self.vars[#self.vars + 1] = {id = id, reg = reg}
+function Compiler:codeVar(id, reg, value, type, expectedType)
+  if not type then
+    self.error("type '%s' does not exists", type)
+  end
+
+  if type ~= expectedType then
+    self.error("Invalid type '%s'", type)
+  end
+
+  self.emit(self.ident() .. " %s = alloca %s", reg, typeToLLVM[type]) 
+  self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[type], value, reg)
+  self.vars[#self.vars + 1] = {id = id, type = type, reg = reg}
 end
 
 function Compiler:findVar(id)
     local vars = self.vars
     for i = #vars, 1, -1 do
         if vars[i].id == id then
-            return vars[i].reg
+            return vars[i]
         end
     end
     self.error("variable not found '%s'", id)
@@ -123,32 +167,53 @@ end
 
 function Compiler:codeExp(exp)
     local tag = exp.tag
-    if tag == "number" then
-        return exp.num
+    if tag == "number int" then
+        return {value = exp.num, type = types.int}
+    elseif tag == "number double" then
+      return {value = exp.num, type = types.double}
     elseif tag == "varId" then
-        local regV = self:findVar(exp.id)
+        local var = self:findVar(exp.id)
+        local regV = var.reg
         local res = self:newTemp()
-        self.emit(self.ident() .. " %s = load i32, i32* %s", res, regV)
-        return res
+        self.emit(self.ident() .. " %s = load %s, %s* %s",res, typeToLLVM[var.type], typeToLLVM[var.type], regV)
+        return {value = res, type = var.type}
     elseif tag == "unarith" then
         local e = self:codeExp(exp.e)
         local res = self:newTemp()
-        self.emit(self.ident() .. " %s = sub i32 0, %s", res, e)
-        return res
+        self.emit(self.ident() .. " %s = %s %s %s, %s", res, binAOps["-"][e.type], e.type, e.type == types.double and '0.0' or '0' , e.value)
+        return {value = res, type = e.type}
     elseif tag == "binarith" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
+
+        if r1.type ~= r2.type then
+          self.error("Invalid binAops type")
+        end
+
+        local opType = typeToLLVM[r1.type]
+        local opBinarith = binAOps[exp.op][r1.type]
+
         local res = self:newTemp()
-        self.emit(self.ident() .. " %s = %s i32 %s, %s", res, binAOps[exp.op], r1, r2)
-        return res
+        self.emit(self.ident() .. " %s = %s %s %s, %s", res, opBinarith, opType, r1.value, r2.value)
+        return {value = res, type = r1.type}
     elseif tag == "binarith comp" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
+
+        if r1.type ~= r2.type then
+          self.error("Invalid binComp Type type")
+        end
+
+        local opType = typeToLLVM[r1.type]
+        local opBinarithComp = binCOps[exp.op][r1.type]
+
         local res1 = self:newTemp()
         local res2 = self:newTemp()
-        self.emit(self.ident() .. " %s = icmp %s i32 %s, %s", res1, binCOps[exp.op], r1, r2)
+        local compCommand = r1.type == types.double and 'fcmp' or 'icmp'
+
+        self.emit(self.ident() .. " %s = %s %s %s %s, %s", res1, compCommand, opBinarithComp, opType, r1.value, r2.value)
         self.emit(self.ident() .. " %s = zext i1 %s to i32", res2, res1)
-        return res2
+        return {value = res2, type = types.int}
     elseif tag == "call" then
       return self:codeCall(exp.name, exp.params)
     else
@@ -215,16 +280,27 @@ function Compiler:codeStat (st)
       self:codeJmp(Lcond)
       self:codeLabel(Lend)
     elseif tag == "print" then
-      local reg = self:codeExp(st.e)
-      self.emit(self.ident() .. " call void @printI(i32 %s)", reg)
+      local exp = self:codeExp(st.e)
+      local reg = exp.value
+      local expType = exp.type
+      if expType == types.double then
+        self.emit(self.ident() .. " call void @printD(double %s)", reg)
+      else
+        self.emit(self.ident() .. " call void @printI(i32 %s)", reg)
+      end
     elseif tag == "var" then
-      local value = self:codeExp(st.e)
+      local exp = self:codeExp(st.e)
+      local expValue = exp.value
+      local expType = exp.type
       local reg = self:newTemp()
-      self:codeVar(st.id, reg, value)
+      local varType = st.type
+
+      self:codeVar(st.id, reg, expValue, expType, varType)
     elseif tag == "ass" then
-      local regE = self:codeExp(st.e)
-      local regV = self:findVar(st.id)
-      self.emit(self.ident() .. " store i32 %s, i32* %s", regE, regV)
+      local res = self:codeExp(st.e)
+      local regE = res.value
+      local var = self:findVar(st.id)
+      self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[res.type], regE, var.reg)
     else
       self.error("'%s': statement not yet implemented", tag)
     end
@@ -232,11 +308,17 @@ function Compiler:codeStat (st)
 
 local premable = [[
 @.str = private unnamed_addr constant [4 x i8] c"%d\0A\00"
+@.strD = private unnamed_addr constant [4 x i8] c"%g\0A\00"
 
 declare dso_local i32 @printf(i8*, ...)
 
 define internal void @printI(i32 %x) {
   %y = call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i64 0, i64 0), i32 %x)
+  ret void
+}
+
+define internal void @printD(double %x) {
+  %y = call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.strD, i64 0, i64 0), double %x)
   ret void
 }
 
@@ -272,7 +354,7 @@ function Compiler:codeFuncHeader(func)
 
   args = args:sub(1, -3)
 
-  self.emit("define %s @%s(%s) {", types[func.type], func.name, args)
+  self.emit("define %s @%s(%s) {", typeToLLVM[types[func.type]], func.name, args)
 
   for _, param in ipairs(params) do self:codeVar(param.id, param.reg, param.value) end
 end
