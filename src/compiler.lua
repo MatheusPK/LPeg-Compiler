@@ -2,31 +2,34 @@ local grammar = require "src/grammar"
 local pt = require "src/pt"
 
 local Compiler = {
-    binAOps = {
-        ["+"] = "add",
-        ["-"] = "sub",
-        ["*"] = "mul",
-        ["/"] = "sdiv"
-    },
-    binCOps = {
-        [">="] = "sge",
-        ["<="] = "sle",
-        [">"] = "sgt",
-        ["<"] = "slt",
-        ["=="] = "eq",
-        ["~="] = "ne"
-    },
-    types = {
-      ["int"] = "i32",
-      ["void"] = "void"
-    },
     tempCount = 0,
     vars = {},
     funcs = {},
-    currentFunc = {name = "", hasReturnStatement = false}
+    currentFunc = {name = ""}
 }
 
-local function ident(len) 
+local binAOps = {
+  ["+"] = "add",
+  ["-"] = "sub",
+  ["*"] = "mul",
+  ["/"] = "sdiv"
+}
+
+local binCOps = {
+  [">="] = "sge",
+  ["<="] = "sle",
+  [">"] = "sgt",
+  ["<"] = "slt",
+  ["=="] = "eq",
+  ["~="] = "ne"
+}
+
+local types = {
+  ["int"] = "i32",
+  ["void"] = "void"
+}
+
+function Compiler.ident(len) 
   len = len or 2
   return string.rep(" ", len)
 end
@@ -55,18 +58,18 @@ function Compiler.error(error, ...)
 end
   
 function Compiler:codeLabel (label)
-  self.emit(ident(1) .. "%s:", label)
+  self.emit(self.ident(1) .. "%s:", label)
 end
 
 function Compiler:codeJmp (label)
-    self.emit(ident() .. " br label %%%s", label)
+    self.emit(self.ident() .. " br label %%%s", label)
 end
   
 function Compiler:codeCond (exp, Ltrue, Lfalse)
     local reg = self:codeExp(exp)
     local aux = self:newTemp()
-    self.emit(ident() .. " %s = icmp ne i32 %s, 0", aux, reg)
-    self.emit(ident() .. " br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
+    self.emit(self.ident() .. " %s = icmp ne i32 %s, 0", aux, reg)
+    self.emit(self.ident() .. " br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
 end
 
 function Compiler:codeCall(funcName, params)
@@ -79,21 +82,27 @@ function Compiler:codeCall(funcName, params)
     self.error("Expected %d parameters, but received %d", func.nArgs, #params)
   end
 
-  local paramsString = ""
+  local paramsTable = {}
   for _, param in ipairs(params) do
-    paramsString = paramsString .. "i32 " .. self:codeExp(param) .. ', '
+    local value = self:codeExp(param)
+    table.insert(paramsTable, value)
+  end
+
+  local paramsString = ""
+  for _, paramValue in ipairs(paramsTable) do
+    paramsString = paramsString .. "i32 " .. paramValue .. ', '
   end
   paramsString = paramsString:sub(1, -3)
 
   local reg = self:newTemp()
-  self.emit(ident() .. " %s = call i32 @%s(%s)", reg, funcName, paramsString)
+  self.emit(self.ident() .. " %s = call i32 @%s(%s)", reg, funcName, paramsString)
 
   return reg
 end
 
 function Compiler:codeVar(id, reg, value)
-  self.emit(ident() .. " %s = alloca i32", reg) 
-  self.emit(ident() .. " store i32 %s, i32* %s", value, reg)
+  self.emit(self.ident() .. " %s = alloca i32", reg) 
+  self.emit(self.ident() .. " store i32 %s, i32* %s", value, reg)
   self.vars[#self.vars + 1] = {id = id, reg = reg}
 end
 
@@ -119,26 +128,26 @@ function Compiler:codeExp(exp)
     elseif tag == "varId" then
         local regV = self:findVar(exp.id)
         local res = self:newTemp()
-        self.emit(ident() .. " %s = load i32, i32* %s", res, regV)
+        self.emit(self.ident() .. " %s = load i32, i32* %s", res, regV)
         return res
     elseif tag == "unarith" then
         local e = self:codeExp(exp.e)
         local res = self:newTemp()
-        self.emit(ident() .. " %s = sub i32 0, %s", res, e)
+        self.emit(self.ident() .. " %s = sub i32 0, %s", res, e)
         return res
     elseif tag == "binarith" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
         local res = self:newTemp()
-        self.emit(ident() .. " %s = %s i32 %s, %s", res, self.binAOps[exp.op], r1, r2)
+        self.emit(self.ident() .. " %s = %s i32 %s, %s", res, binAOps[exp.op], r1, r2)
         return res
     elseif tag == "binarith comp" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
         local res1 = self:newTemp()
         local res2 = self:newTemp()
-        self.emit(ident() .. " %s = icmp %s i32 %s, %s", res1, self.binCOps[exp.op], r1, r2)
-        self.emit(ident() .. " %s = zext i1 %s to i32", res2, res1)
+        self.emit(self.ident() .. " %s = icmp %s i32 %s, %s", res1, binCOps[exp.op], r1, r2)
+        self.emit(self.ident() .. " %s = zext i1 %s to i32", res2, res1)
         return res2
     elseif tag == "call" then
       return self:codeCall(exp.name, exp.params)
@@ -175,9 +184,7 @@ function Compiler:codeStat (st)
           self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, expectedReturnType, returnType)
         end
 
-        self.emit(ident() .. " ret %s %s", self.types[returnType] ,returnExp)
-
-        self.currentFunc.hasReturnStatement = true
+        self.emit(self.ident() .. " ret %s %s", types[returnType] ,returnExp)
     elseif tag == "if" then
       local Lthen = self:newLabel()
       local Lelse = self:newLabel()
@@ -209,7 +216,7 @@ function Compiler:codeStat (st)
       self:codeLabel(Lend)
     elseif tag == "print" then
       local reg = self:codeExp(st.e)
-      self.emit(ident() .. " call void @printI(i32 %s)", reg)
+      self.emit(self.ident() .. " call void @printI(i32 %s)", reg)
     elseif tag == "var" then
       local value = self:codeExp(st.e)
       local reg = self:newTemp()
@@ -217,7 +224,7 @@ function Compiler:codeStat (st)
     elseif tag == "ass" then
       local regE = self:codeExp(st.e)
       local regV = self:findVar(st.id)
-      self.emit(ident() .. " store i32 %s, i32* %s", regE, regV)
+      self.emit(self.ident() .. " store i32 %s, i32* %s", regE, regV)
     else
       self.error("'%s': statement not yet implemented", tag)
     end
@@ -243,18 +250,15 @@ function Compiler:codeFunc (func)
     self:codeFuncHeader(func)
     self:codeStat(func.body)
 
-    if func.type ~= 'void' and not self.currentFunc.hasReturnStatement then
-      self.error("Function '%s' missing return statement", func.name)
-    end
-
-    if func.type == 'void' then
-      self.emit(ident() .. " ret void")
+    if func.type == "void" then
+      self.emit(self.ident() .. " ret void")
+    elseif func.type == "int" then
+      self.emit(self.ident() .. " ret i32 0")
     end
 
     self.emit("}")
 
     self.currentFunc.name = ""
-    self.currentFunc.hasReturnStatement = false
 end
 
 function Compiler:codeFuncHeader(func)
@@ -268,7 +272,7 @@ function Compiler:codeFuncHeader(func)
 
   args = args:sub(1, -3)
 
-  self.emit("define %s @%s(%s) {", self.types[func.type], func.name, args)
+  self.emit("define %s @%s(%s) {", types[func.type], func.name, args)
 
   for _, param in ipairs(params) do self:codeVar(param.id, param.reg, param.value) end
 end
