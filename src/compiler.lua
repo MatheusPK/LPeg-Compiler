@@ -16,7 +16,8 @@ local types = {
 
 local typeToLLVM = {
   ["int"] = "i32",
-  ["double"] = "double"
+  ["double"] = "double",
+  ["void"] = "void"
 }
 
 local binAOps = {
@@ -120,34 +121,40 @@ function Compiler:codeCall(funcName, params)
 
   local paramsTable = {}
   for _, param in ipairs(params) do
-    local value = self:codeExp(param)
-    table.insert(paramsTable, value)
+    local exp = self:codeExp(param)
+    table.insert(paramsTable, exp)
   end
 
   local paramsString = ""
-  for _, paramValue in ipairs(paramsTable) do
-    paramsString = paramsString .. "i32 " .. paramValue .. ', '
+  for i, param in ipairs(paramsTable) do
+    local paramType = typeToLLVM[param.type]
+    local paramValue = param.value
+
+    if param.type ~= func.argsType[i] then
+      self.error("expected parameter of type '%s', but received type '%s'", func.argsType[i], paramType)
+    end 
+    paramsString = paramsString .. paramType .. " " .. paramValue .. ', '
   end
   paramsString = paramsString:sub(1, -3)
 
   local reg = self:newTemp()
-  self.emit(self.ident() .. " %s = call i32 @%s(%s)", reg, funcName, paramsString)
+  self.emit(self.ident() .. " %s = call %s @%s(%s)", reg, typeToLLVM[func.retType], funcName, paramsString)
 
-  return reg
+  return reg, func.retType
 end
 
-function Compiler:codeVar(id, reg, value, type, expectedType)
-  if not type then
-    self.error("type '%s' does not exists", type)
+function Compiler:codeVar(id, reg, value, expType, varType)
+  if not expType then
+    self.error("type '%s' does not exists", expType)
   end
 
-  if type ~= expectedType then
-    self.error("Invalid type '%s'", type)
+  if expType ~= varType then
+    self.error("Invalid type '%s'", expType)
   end
 
-  self.emit(self.ident() .. " %s = alloca %s", reg, typeToLLVM[type]) 
-  self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[type], value, reg)
-  self.vars[#self.vars + 1] = {id = id, type = type, reg = reg}
+  self.emit(self.ident() .. " %s = alloca %s", reg, typeToLLVM[expType]) 
+  self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[expType], value, reg)
+  self.vars[#self.vars + 1] = {id = id, type = varType, reg = reg}
 end
 
 function Compiler:findVar(id)
@@ -165,23 +172,27 @@ function Compiler:isValidReturnType(retType)
     return expectedReturnType == retType, expectedReturnType
 end
 
+function Compiler:exp(value, type)
+  return {value = value, type = type}
+end
+
 function Compiler:codeExp(exp)
     local tag = exp.tag
     if tag == "number int" then
-        return {value = exp.num, type = types.int}
+        return self:exp(exp.num, types.int)
     elseif tag == "number double" then
-      return {value = exp.num, type = types.double}
+      return self:exp(exp.num, types.double)
     elseif tag == "varId" then
         local var = self:findVar(exp.id)
         local regV = var.reg
         local res = self:newTemp()
         self.emit(self.ident() .. " %s = load %s, %s* %s",res, typeToLLVM[var.type], typeToLLVM[var.type], regV)
-        return {value = res, type = var.type}
+        return self:exp(res, var.type)
     elseif tag == "unarith" then
         local e = self:codeExp(exp.e)
         local res = self:newTemp()
         self.emit(self.ident() .. " %s = %s %s %s, %s", res, binAOps["-"][e.type], e.type, e.type == types.double and '0.0' or '0' , e.value)
-        return {value = res, type = e.type}
+        return self:exp(res, e.type)
     elseif tag == "binarith" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
@@ -195,7 +206,7 @@ function Compiler:codeExp(exp)
 
         local res = self:newTemp()
         self.emit(self.ident() .. " %s = %s %s %s, %s", res, opBinarith, opType, r1.value, r2.value)
-        return {value = res, type = r1.type}
+        return self:exp(res, r1.type)
     elseif tag == "binarith comp" then
         local r1 = self:codeExp(exp.e1)
         local r2 = self:codeExp(exp.e2)
@@ -213,9 +224,10 @@ function Compiler:codeExp(exp)
 
         self.emit(self.ident() .. " %s = %s %s %s %s, %s", res1, compCommand, opBinarithComp, opType, r1.value, r2.value)
         self.emit(self.ident() .. " %s = zext i1 %s to i32", res2, res1)
-        return {value = res2, type = types.int}
+        return self:exp(res2, types.int)
     elseif tag == "call" then
-      return self:codeCall(exp.name, exp.params)
+      local callReturnValue, callReturnType = self:codeCall(exp.name, exp.params)
+      return self:exp(callReturnValue, callReturnType)
     else
         self.error("'%s': expression not yet implemented", tag)
     end
@@ -237,11 +249,11 @@ function Compiler:codeStat (st)
       self:codeCall(st.name, st.params)
     elseif tag == "return" then
         local returnExp = ""
-        local returnType = "void"
+        local returnType = ""
 
         if st.e and st.e ~= "" then
           returnExp = self:codeExp(st.e)
-          returnType = "int"
+          returnType = returnExp.type
         end
 
         local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
@@ -249,7 +261,7 @@ function Compiler:codeStat (st)
           self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, expectedReturnType, returnType)
         end
 
-        self.emit(self.ident() .. " ret %s %s", types[returnType] ,returnExp)
+        self.emit(self.ident() .. " ret %s %s", typeToLLVM[returnType] ,returnExp.value)
     elseif tag == "if" then
       local Lthen = self:newLabel()
       local Lelse = self:newLabel()
@@ -300,6 +312,11 @@ function Compiler:codeStat (st)
       local res = self:codeExp(st.e)
       local regE = res.value
       local var = self:findVar(st.id)
+
+      if res.type ~= var.type then
+        self.error("Tried to assing '%s' value to '%s' var", res.type, var.type)
+      end
+
       self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[res.type], regE, var.reg)
     else
       self.error("'%s': statement not yet implemented", tag)
@@ -326,7 +343,11 @@ define internal void @printD(double %x) {
 
 
 function Compiler:codeFunc (func)
-    self.funcs[func.name] = {retType = func.type, nArgs = #func.args}
+    self.funcs[func.name] = {
+      retType = func.type,
+      nArgs = #func.args,
+      argsType = {}
+    }
     self.currentFunc.name = func.name
 
     self:codeFuncHeader(func)
@@ -336,6 +357,8 @@ function Compiler:codeFunc (func)
       self.emit(self.ident() .. " ret void")
     elseif func.type == "int" then
       self.emit(self.ident() .. " ret i32 0")
+    elseif func.type == "double" then
+      self.emit(self.ident() .. "ret double 0.0")
     end
 
     self.emit("}")
@@ -348,15 +371,31 @@ function Compiler:codeFuncHeader(func)
   local params = {}
   for _, arg in ipairs(func.args) do
     local regArg = self:newTemp()
-    args = args .. 'i32 ' .. regArg .. ', '
-    table.insert(params, {id = arg, reg = self:newTemp(), value = regArg})
+    
+    local argType = arg.type
+    local argId = arg.id
+
+    if not types[argType] then
+      self.error(" Type '%s' of argument '%s' does not exists", argType, argId)
+    end
+
+    if argType == types.void then
+      self.error("void type only allowed for function results")
+    end
+
+    table.insert(self.funcs[func.name].argsType, argType)
+    
+    args = args .. typeToLLVM[argType] .. ' ' .. regArg .. ', '
+    table.insert(params, {id = argId, type = argType, reg = self:newTemp(), value = regArg})
   end
 
   args = args:sub(1, -3)
 
   self.emit("define %s @%s(%s) {", typeToLLVM[types[func.type]], func.name, args)
 
-  for _, param in ipairs(params) do self:codeVar(param.id, param.reg, param.value) end
+  for _, param in ipairs(params) do 
+    self:codeVar(param.id, param.reg, param.value, param.type, param.type) 
+  end
 end
 
 function Compiler:codeProg (prog)

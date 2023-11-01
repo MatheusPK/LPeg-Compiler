@@ -31,8 +31,13 @@ local function foldComp(t)
     return res
 end
 
-local function foldReturn(t)
-    return {tag = "return", e = t[1]}
+local function foldArgs(t)
+    local res = {}
+    for i = 1, #t, 2 do
+        local arg = {id = t[i], type = t[i + 1]}
+        table.insert(res, arg)
+    end
+    return res
 end
 
 local function I(msg)
@@ -70,7 +75,7 @@ local function isValidIdentifier (s, currentPos, id)
 end
 
 local integer = (digit ^ 1) / tonumber * S
-local double = digit^0 * lpeg.P"." * digit / tonumber * S
+local double = digit^0 * lpeg.P"." * digit^1 / tonumber * S
 local opA = lpeg.C(lpeg.S("+-")) * S
 local opM = lpeg.C(lpeg.S("*/")) * S
 local opUn = lpeg.C("-") * S
@@ -106,21 +111,21 @@ grammar.lastpos = 0
 
 grammar.prog = lpeg.P {"defs",
     defs = lpeg.Ct(def^1),
-    def = Rw"fun" * Id * OP * arguments * CP * (type + lpeg.C"") * block / node("func", "name", "args", "type", "body"),
+    def = Rw"fun" * Id * OP * arguments * CP * (CL * type + lpeg.Cc"void") * block / node("func", "name", "args", "type", "body"),
     stats = stat * (SC * stats)^-1 * SC^-1 / function (st, pg)
         return pg and {tag="seq", s1 = st, s2 = pg} or st
     end,
     block = OB * stats * CB / node("block", "body"),
     stat = Prt * exp / node("print", "e")
-        + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * type * Eq * exp / node("var", "id", "type", "e")
+        + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * CL * type * Eq * exp / node("var", "id", "type", "e")
         + Id * Eq * exp / node("ass", "id", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
         + call
         + Rw"return" * (exp + lpeg.C"") / node("return", "e"),
     call = Id * OP * parameters * CP / node("call", "name", "params"),
-    type = ((CL * Id)),
-    arguments = lpeg.Ct((Id * (CM * Id)^0)^-1),
+    type = Id,
+    arguments = lpeg.Ct((Id * CL * type * (CM * Id * CL * type)^0)^-1) / foldArgs,
     parameters = lpeg.Ct((exp * (CM * exp)^0)^-1),
     primary = double / node("number double", "num")
         + integer / node("number int", "num") 

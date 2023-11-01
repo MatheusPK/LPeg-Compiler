@@ -1,0 +1,11 @@
+fun foo(a: int, b: double, c: int): double {
+    @a + c;
+    return b + 2.0;
+}
+
+fun main(): int {
+    var y: double = 10.0;
+    var x: double = 10.0;
+    x = foo(1, 2.0, 2);
+    @x + 0.5;
+}
