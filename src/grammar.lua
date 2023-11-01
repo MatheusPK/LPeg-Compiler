@@ -92,6 +92,7 @@ local opComp = (igualdade + diferenca + maiorIgual + menorIgual + maior + menor)
 
 local primary = lpeg.V "primary"
 local postfix = lpeg.V"postfix"
+local postfixCast = lpeg.V"postfixCast"
 local factor = lpeg.V "factor"
 local expM = lpeg.V "expM"
 local expA = lpeg.V "expA"
@@ -132,7 +133,9 @@ grammar.prog = lpeg.P {"defs",
         + OP * exp * CP 
         + Id / node("varId", "id"),
     postfix = call + primary,
-    factor = postfix
+    postfixCast = postfix * Rw"as" * type / node("cast", "e", "type")
+        + postfix,
+    factor = postfixCast
             + opUn * factor / node("unarith", "op", "e"),
     expM = lpeg.Ct(factor * (opM * factor) ^ 0) / fold,
     expA = lpeg.Ct(expM * (opA * expM) ^ 0) / fold,

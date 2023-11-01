@@ -20,6 +20,15 @@ local typeToLLVM = {
   ["void"] = "void"
 }
 
+local castOp = {
+  [types.int] = {
+    [types.double] = "sitofp"
+  },
+  [types.double] = {
+    [types.int] = "fptosi"
+  }
+}
+
 local binAOps = {
   ["+"] = {
     [types.int] = "add",
@@ -107,6 +116,12 @@ function Compiler:codeCond (exp, Ltrue, Lfalse)
     local aux = self:newTemp()
     self.emit(self.ident() .. " %s = icmp ne i32 %s, 0", aux, exp.value)
     self.emit(self.ident() .. " br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
+end
+
+function Compiler:codeCast(value, baseType, targetType)
+  local res = self:newTemp()
+  self.emit(self.ident() .. " %s = %s %s %s to %s", res, castOp[baseType][targetType], typeToLLVM[baseType], value, typeToLLVM[targetType])
+  return res
 end
 
 function Compiler:codeCall(funcName, params)
@@ -228,6 +243,18 @@ function Compiler:codeExp(exp)
     elseif tag == "call" then
       local callReturnValue, callReturnType = self:codeCall(exp.name, exp.params)
       return self:exp(callReturnValue, callReturnType)
+    elseif tag == "cast" then
+      if not types[exp.type] then
+        self.error("cast: type '%s' does not exists", exp.type)
+      end
+
+      local res = self:codeExp(exp.e)
+
+      if res.type == exp.type then
+        self.error("cast: '%s' already a '%s' value", exp.e, exp.type)
+      end
+
+      return self:exp(self:codeCast(res.value, res.type, exp.type), exp.type)
     else
         self.error("'%s': expression not yet implemented", tag)
     end

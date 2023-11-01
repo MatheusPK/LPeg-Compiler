@@ -1,5 +1,8 @@
-void foo10() { 
-    int b = 10;
-    int a = b;
-    a = 20;
+void foo10() {
+    int t = 10;
+    double d = 10.0;
+
+    
+    double b = (double) t;
+    int a = (int) d;
  }
