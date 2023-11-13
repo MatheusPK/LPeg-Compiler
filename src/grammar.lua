@@ -40,6 +40,15 @@ local function foldArgs(t)
     return res
 end
 
+local function foldCast(t)
+    local res = t[1]
+    for i = 2, #t, 1 do
+        res = {tag = "cast", e = res, type = t[i]}
+    end
+
+    return res
+end
+
 local function I(msg)
     return lpeg.P(function() print(msg); return true end)
 end
@@ -133,8 +142,7 @@ grammar.prog = lpeg.P {"defs",
         + OP * exp * CP 
         + Id / node("varId", "id"),
     postfix = call + primary,
-    postfixCast = postfix * Rw"as" * type / node("cast", "e", "type")
-        + postfix,
+    postfixCast = lpeg.Ct((postfix * (Rw"as" * type)^0)) / foldCast,
     factor = postfixCast
             + opUn * factor / node("unarith", "op", "e"),
     expM = lpeg.Ct(factor * (opM * factor) ^ 0) / fold,

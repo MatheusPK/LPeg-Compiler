@@ -53,16 +53,12 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	w8, #10
-	mov	x9, #4621819117588971520
-	fmov	d0, #10.50000000
-	str	w8, [sp, #12]
-	str	x9, [sp]
+	mov	x8, #4621819117588971520
+	str	x8, [sp, #8]
+	mov	x8, #3689348814741910323
+	movk	x8, #16420, lsl #48
+	fmov	d0, x8
 	bl	_printD
-	ldr	d0, [sp]
-	fcvtzs	w8, d0
-	add	w0, w8, #4
-	bl	_printI
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
 	mov	w0, wzr
 	add	sp, sp, #32
@@ -74,6 +70,6 @@ l_.str:                                 ; @.str
 	.asciz	"%d\n"
 
 l_.strD:                                ; @.strD
-	.asciz	"%g\n"
+	.asciz	"%.16g"
 
 .subsections_via_symbols

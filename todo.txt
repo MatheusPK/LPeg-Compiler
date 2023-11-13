@@ -1,3 +1,10 @@
 1 - criar saida para debug(arquivo)
 2 - passar o input por linha de comando para o compiler
 4 - trocar parametro por argumento
+5 - tirar ident
+
+
+9 - cast implicito
+9 - criar array
+10 - arrary com tamanho fixo
+11 - ver em c

@@ -1,8 +1,6 @@
-void foo10() {
-    int t = 10;
-    double d = 10.0;
+#include <stdlib.h>
+#include <stdio.h>
 
-    
-    double b = (double) t;
-    int a = (int) d;
- }
+void foo() {
+    printf("%.16g", 10.0452342342345);
+}

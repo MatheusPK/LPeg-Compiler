@@ -1,6 +1,4 @@
 fun main(): int {
-    var x: int = 10;
-    var y: double = x as double;
-    @ y + 0.5;
-    @ y as int + 4;
+    var y: double = 10.8 as int as double as int as double;
+    @y + 0.1;
 }

@@ -251,7 +251,7 @@ function Compiler:codeExp(exp)
       local res = self:codeExp(exp.e)
 
       if res.type == exp.type then
-        self.error("cast: '%s' already a '%s' value", exp.e, exp.type)
+        --self.error("cast: '%s' already a '%s' value", exp.e, exp.type) vira warning
       end
 
       return self:exp(self:codeCast(res.value, res.type, exp.type), exp.type)
@@ -352,7 +352,7 @@ function Compiler:codeStat (st)
 
 local premable = [[
 @.str = private unnamed_addr constant [4 x i8] c"%d\0A\00"
-@.strD = private unnamed_addr constant [4 x i8] c"%g\0A\00"
+@.strD = private unnamed_addr constant [6 x i8] c"%.16g\00"
 
 declare dso_local i32 @printf(i8*, ...)
 
