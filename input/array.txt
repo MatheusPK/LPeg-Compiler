@@ -1,0 +1,4 @@
+fun main(): int {
+    var x: [int] = new [int](10);
+    @x[1][2]
+}

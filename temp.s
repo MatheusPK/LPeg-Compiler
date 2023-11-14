@@ -53,12 +53,16 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	x8, #4621819117588971520
-	str	x8, [sp, #8]
-	mov	x8, #3689348814741910323
-	movk	x8, #16420, lsl #48
-	fmov	d0, x8
-	bl	_printD
+	mov	w0, #4
+	bl	_malloc
+	mov	x9, #20
+	mov	w8, #10
+	movk	x9, #65516, lsl #32
+	movk	x9, #65535, lsl #48
+	stp	x0, x9, [sp, #8]
+	mov	w0, #-20
+	str	w8, [sp, #12]
+	bl	_printI
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
 	mov	w0, wzr
 	add	sp, sp, #32

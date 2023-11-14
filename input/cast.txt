@@ -1,4 +1,13 @@
+fun foo(a: int, b: double): double {
+    return a as double + b;
+}
+
+fun foo2(a: int) {
+    @a;
+    return;
+}
+
 fun main(): int {
-    var y: double = 10.8 as int as double as int as double;
-    @y + 0.1;
+    @foo(1, 6.0);
+    var y: double = 10.0;
 }
