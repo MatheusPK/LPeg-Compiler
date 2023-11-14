@@ -153,13 +153,12 @@ function Compiler:codeCall(funcName, params)
   local paramsString = ""
   for i, param in ipairs(paramsTable) do
     local paramRawType = self:getRawType(param.type)
-    local paramType = typeToLLVM[paramRawType]
     local paramValue = param.value
 
     if not self:typeIsEqual(param.type, func.argsType[i]) then
-      self.error("expected parameter of type '%s', but received type '%s'", func.argsType[i], paramType)
+      self.error("expected parameter of type '%s', but received type '%s'", self:strType(func.argsType[i]), self:strType(param.type))
     end 
-    paramsString = paramsString .. paramType .. " " .. paramValue .. ', '
+    paramsString = paramsString .. typeToLLVM[paramRawType] .. " " .. paramValue .. ', '
   end
   paramsString = paramsString:sub(1, -3)
 
@@ -200,13 +199,23 @@ function Compiler:getRawType(type)
   end
 end
 
+function Compiler:strType(type)
+  if type.tag == "primitive type" then
+      return type.t
+  elseif type.tag == "array type" then
+      return string.format("[%s]", self:strType(type.t))
+  else
+    return "UNKNOW"
+  end
+end
+
 function Compiler:codeVar(id, reg, value, expType, varType)
   if not self:typeExists(varType) then
-    self.error("declaring a var with type '%s' that does not exists", expType)
+    self.error("declaring a var with type '%s' that does not exists", self:strType(expType))
   end
 
   if not self:typeIsEqual(expType, varType) then
-    self.error("code var: var type and expression type mismatch")
+    self.error("code var: var type and expression type mismatch expression type '%s', var type '%s'", self:strType(expType), self:strType(varType))
   end
 
   local expRawType = self:getRawType(expType)
@@ -225,7 +234,7 @@ function Compiler:codeMalloc(reg, type, size)
   elseif type.tag == "primitive type" then
     mallocSize = typeSize[type.t]
   else
-    self.error("Type '%s' not yet implemented", type.tag)
+    self.error("Type '%s' not yet implemented", self:strType(type))
   end
 
   self.emit(self.ident() .. " %s = call ptr @malloc(i64 %s)", reg, mallocSize)
@@ -253,7 +262,7 @@ function Compiler:newFindVar(var)
     end
 
     if value.type.tag == "primitive type" then
-      self.error("attempt to index a '%s' value", value.type.t)
+      self.error("attempt to index a '%s' value", self:strType(value.type))
     end
 
     local res = self:newTemp()
@@ -342,7 +351,7 @@ function Compiler:codeExp(exp)
       return self:exp(callReturnValue, callReturnType)
     elseif tag == "cast" then
       if not self:typeExists(exp.type) then
-        self.error("cast: type '%s' does not exists", exp.type.tag)
+        self.error("cast: type '%s' does not exists", self:strType(exp.type))
       end
 
       local res = self:codeExp(exp.e)
@@ -356,7 +365,7 @@ function Compiler:codeExp(exp)
       local size = exp.size
 
       if exp.type.tag ~= "array type" then
-        self.error("invalid type for new, expected array type, but received '%s'", exp.type.tag)
+        self.error("invalid type for new, expected array type, but received '%s'", self:strType(exp.type))
       end
 
       local res = self:newTemp()
@@ -393,7 +402,7 @@ function Compiler:codeStat (st)
 
         local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
         if not isValidReturnType then
-          self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, expectedReturnType, returnType)
+          self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, self:strType(expectedReturnType), self:strType(returnType))
         end
 
         local rawReturnType = self:getRawType(returnType)
@@ -452,7 +461,7 @@ function Compiler:codeStat (st)
       local var = self:findVar(st.var)
 
       if not self:typeIsEqual(res.type, var.type) then
-        self.error("Tried to assing '%s' value to '%s' var", res.type, var.type)
+        self.error("Tried to assing '%s' value to '%s' var", self:strType(res.type), self:strType(var.type))
       end
 
       local rawResType = self:getRawType(res.type)
