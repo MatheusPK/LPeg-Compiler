@@ -1,19 +1,15 @@
-fun greater(v: [int], size: int): int {
-    var i: int = 0;
-    while i < size {
-        @v[i];
-        i = i + 1;
-    };
-    return 0;
-}
-
 fun main(): int {
-    var x: [int] = new [int](5);
-    x[0] = 1;
-    x[1] = 2;
-    x[2] = 3;
-    x[3] = 4;
-    x[4] = 5;
+    var y: [[int]] = new [int](2);
 
-    greater(x, 5);
+    y[0] = new [int](2);
+    y[1] = new [int](2);
+
+    y[0][0] = 1;
+    y[0][1] = 3;
+
+    y[1][0] = 2;
+    y[1][1] = 4;
+    
+    @y[0][0] + y[1][1];
+    @y[0][1] + y[1][0];
 }

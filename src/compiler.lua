@@ -247,6 +247,15 @@ function Compiler:newFindVar(var)
     end
   elseif var.tag == "indexed" then
     local value = self:newFindVar(var.t)
+
+    if value == nil then
+      self.error("attempt to index a nil value")
+    end
+
+    if value.type.tag == "primitive type" then
+      self.error("attempt to index a '%s' value", value.type.t)
+    end
+
     local res = self:newTemp()
     local index = self:codeExp(var.index)
     local varRawType = self:getRawType(value.type.t)
@@ -258,6 +267,9 @@ end
 
 function Compiler:findVar(var)
   local res = self:newFindVar(var)
+  if res == nil then
+    self.error("Variable '%s' not found", var.t)
+  end
   return res
 end
 
