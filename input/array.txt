@@ -1,4 +1,19 @@
+fun greater(v: [int], size: int): int {
+    var i: int = 0;
+    while i < size {
+        @v[i];
+        i = i + 1;
+    };
+    return 0;
+}
+
 fun main(): int {
-    var x: [int] = new [int](10);
-    @x[1][2]
+    var x: [int] = new [int](5);
+    x[0] = 1;
+    x[1] = 2;
+    x[2] = 3;
+    x[3] = 4;
+    x[4] = 5;
+
+    greater(x, 5);
 }

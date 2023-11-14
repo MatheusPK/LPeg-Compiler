@@ -232,8 +232,9 @@ function Compiler:codeMalloc(reg, type, size)
 end
 
 function Compiler:codeGetElementPtr(res, type, var, index)
-  -- %4 = getelementptr inbounds i32, ptr %3, i64 1
-  self.emit(self.ident() .. "%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, var, index)
+  local temp = self:newTemp()
+  self.emit(self.ident() .. "%s = load ptr, ptr %s", temp, var)
+  self.emit(self.ident() .. "%s = getelementptr inbounds %s, ptr %s, i32 %s", res, type, temp, index)
 end
 
 function Compiler:newFindVar(var)
@@ -280,7 +281,7 @@ function Compiler:codeExp(exp)
         local regV = var.reg
         local res = self:newTemp()
         local varRawType = self:getRawType(var.type)
-        self.emit(self.ident() .. " %s = load %s, %s* %s",res, typeToLLVM[varRawType], typeToLLVM[varRawType], regV)
+        self.emit(self.ident() .. " %s = load %s, ptr %s",res, typeToLLVM[varRawType], regV)
         return self:exp(res, var.type)
     elseif tag == "unarith" then
         local e = self:codeExp(exp.e)
