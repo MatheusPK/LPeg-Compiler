@@ -43,57 +43,41 @@ Lloh3:
 	.loh AdrpAdd	Lloh2, Lloh3
 	.cfi_endproc
                                         ; -- End function
+	.globl	_foo                            ; -- Begin function foo
+	.p2align	2
+_foo:                                   ; @foo
+	.cfi_startproc
+; %bb.0:
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	mov	w8, w0
+	mul	w0, w0, w0
+	str	w8, [sp, #12]
+	add	sp, sp, #16
+	ret
+	.cfi_endproc
+                                        ; -- End function
 	.globl	_main                           ; -- Begin function main
 	.p2align	2
 _main:                                  ; @main
 	.cfi_startproc
 ; %bb.0:
-	sub	sp, sp, #48
-	.cfi_def_cfa_offset 48
-	stp	x20, x19, [sp, #16]             ; 16-byte Folded Spill
-	stp	x29, x30, [sp, #32]             ; 16-byte Folded Spill
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	.cfi_offset w19, -24
-	.cfi_offset w20, -32
-	mov	w0, #8
+	mov	w0, #100
+	bl	_foo
+	lsl	w8, w0, #2
+	add	w8, w8, #240
+	sxtw	x0, w8
 	bl	_malloc
-	str	x0, [sp, #8]
-	mov	w0, #4
-	mov	w19, #4
-	bl	_malloc
-	ldr	x8, [sp, #8]
-	str	x0, [x8]
-	mov	w0, #4
-	bl	_malloc
-	ldr	x8, [sp, #8]
-	mov	w9, #1
-	ldr	x10, [x8]
-	str	x0, [x8, #8]
-	str	w9, [x10]
-	mov	w9, #3
-	ldr	x10, [x8]
-	str	w9, [x10, #4]
-	mov	w9, #2
-	ldr	x10, [x8, #8]
-	str	w9, [x10]
-	ldr	x9, [x8, #8]
-	str	w19, [x9, #4]
-	ldp	x9, x8, [x8]
-	ldr	w9, [x9]
-	ldr	w8, [x8, #4]
-	add	w0, w9, w8
-	bl	_printI
-	ldr	x8, [sp, #8]
-	ldp	x9, x8, [x8]
-	ldr	w9, [x9, #4]
-	ldr	w8, [x8]
-	add	w0, w9, w8
-	bl	_printI
-	ldp	x29, x30, [sp, #32]             ; 16-byte Folded Reload
+	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
+	mov	x8, x0
 	mov	w0, wzr
-	ldp	x20, x19, [sp, #16]             ; 16-byte Folded Reload
-	add	sp, sp, #48
+	str	x8, [sp, #8]
+	add	sp, sp, #32
 	ret
 	.cfi_endproc
                                         ; -- End function
@@ -102,6 +86,6 @@ l_.str:                                 ; @.str
 	.asciz	"%d\n"
 
 l_.strD:                                ; @.strD
-	.asciz	"%.16g"
+	.asciz	"%.16g\n"
 
 .subsections_via_symbols

@@ -2,12 +2,13 @@ local grammar = require "src/grammar"
 local pt = require "src/pt"
 
 local Compiler = {
-    tempCount = 0,
-    vars = {},
-    funcs = {},
-    currentFunc = {name = ""}
+  tempCount = 0,
+  vars = {},
+  funcs = {},
+  currentFunc = {name = ""}
 }
 
+-- MARK: Constants
 local types = {
   ["double"] = "double",
   ["int"] = "int",
@@ -19,13 +20,13 @@ local typeToLLVM = {
   [types.int] = "i32",
   [types.double] = "double",
   [types.void] = "void",
-  [types.array] = "ptr",
+  [types.array] = "ptr"
 }
 
 local typeSize = {
   [types.int] = 4,
   [types.double] = 8,
-  [types.array] = 8,
+  [types.array] = 8
 }
 
 local castOp = {
@@ -83,117 +84,80 @@ local binCOps = {
   }
 }
 
-function Compiler.ident(len) 
-  len = len or 2
-  return string.rep(" ", len)
+-- MARK: Helpers Functions
+function Compiler:newTemp()
+  local temp = string.format("%%T%d", self.tempCount)
+  self.tempCount = self.tempCount + 1
+  return temp
 end
 
-function Compiler:newTemp()
-    local temp = string.format("%%T%d", self.tempCount)
-    self.tempCount = self.tempCount + 1
-    return temp
-end
-  
-function Compiler:newLabel ()
-    local temp = string.format("L%d", self.tempCount)
-    self.tempCount = self.tempCount + 1
-    return temp
+function Compiler:newLabel()
+  local temp = string.format("L%d", self.tempCount)
+  self.tempCount = self.tempCount + 1
+  return temp
 end
 
 function Compiler.emit(content, ...)
-  local finalContent = ... and string.format(content, ...) or  content
+  local finalContent = ... and string.format(content, ...) or content
   io.write(finalContent .. "\n")
 end
 
 function Compiler.error(error, ...)
-  local finalContent = ... and string.format(error, ...) or  error
+  local finalContent = ... and string.format(error, ...) or error
   io.stderr:write(finalContent .. "\n")
   os.exit(1)
 end
-  
-function Compiler:codeLabel (label)
-  self.emit(self.ident(1) .. "%s:", label)
+
+function Compiler:codeLabel(label)
+  self.emit("%s:", label)
 end
 
-function Compiler:codeJmp (label)
-    self.emit(self.ident() .. " br label %%%s", label)
+function Compiler:codeJmp(label)
+  self.emit("br label %%%s", label)
 end
-  
-function Compiler:codeCond (exp, Ltrue, Lfalse)
-    local exp = self:codeExp(exp)
-    local aux = self:newTemp()
-    self.emit(self.ident() .. " %s = icmp ne i32 %s, 0", aux, exp.value)
-    self.emit(self.ident() .. " br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
+
+function Compiler:codeCond(exp, Ltrue, Lfalse)
+  local exp = self:codeExp(exp)
+  local aux = self:newTemp()
+  self.emit("%s = icmp ne i32 %s, 0", aux, exp.value)
+  self.emit("br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
 end
 
 function Compiler:codeCast(value, baseType, targetType)
   local res = self:newTemp()
   local baseRawType = self:getRawType(baseType)
   local targetRawType = self:getRawType(targetType)
-  self.emit(self.ident() .. " %s = %s %s %s to %s", res, castOp[baseRawType][targetRawType], typeToLLVM[baseRawType], value, typeToLLVM[targetRawType])
+  self.emit("%s = %s %s %s to %s", res, castOp[baseRawType][targetRawType], typeToLLVM[baseRawType], value, typeToLLVM[targetRawType])
   return res
-end
-
-function Compiler:codeCall(funcName, params)
-  local func = self.funcs[funcName]
-  if not func then
-    self.error("Attempt to call a nil value '%s'", func.name)
-  end
-
-  if #params ~= func.nArgs then
-    self.error("Expected %d parameters, but received %d", func.nArgs, #params)
-  end
-
-  local paramsTable = {}
-  for _, param in ipairs(params) do
-    local exp = self:codeExp(param)
-    table.insert(paramsTable, exp)
-  end
-
-  local paramsString = ""
-  for i, param in ipairs(paramsTable) do
-    local paramRawType = self:getRawType(param.type)
-    local paramValue = param.value
-
-    if not self:typeIsEqual(param.type, func.argsType[i]) then
-      self.error("expected parameter of type '%s', but received type '%s'", self:strType(func.argsType[i]), self:strType(param.type))
-    end 
-    paramsString = paramsString .. typeToLLVM[paramRawType] .. " " .. paramValue .. ', '
-  end
-  paramsString = paramsString:sub(1, -3)
-
-  local funcRawRetType = self:getRawType(func.retType)
-  local reg = self:newTemp()
-  self.emit(self.ident() .. " %s = call %s @%s(%s)", reg, typeToLLVM[funcRawRetType], funcName, paramsString)
-
-  return reg, func.retType
 end
 
 function Compiler:typeExists(type)
   if type.tag == "primitive type" then
-      return types[type.t] ~= nil
+    return types[type.type] ~= nil
   elseif type.tag == "array type" then
-    return self:typeExists(type.t)
+    return self:typeExists(type.nestedType)
   else
     return false
   end
 end
 
 function Compiler:typeIsEqual(typeA, typeB)
-  if typeA.tag == typeB.tag and typeA.tag == "primitive type" then
-    return typeA.t == typeB.t
-  elseif typeA.tag == typeB.tag and typeA.tag == "array type" then
-    return self:typeIsEqual(typeA.t, typeB.t)
-  else
-    return false
+  if typeA.tag ~= typeB.tag then return end
+
+  if typeA.tag == "primitive type" then
+    return typeA.type == typeB.type
+  elseif typeA.tag == "array type" then
+    return self:typeIsEqual(typeA.nestedType, typeB.nestedType)
   end
+
+  return false
 end
 
 function Compiler:getRawType(type)
   if type.tag == "primitive type" then
-      return type.t
+    return type.type
   elseif type.tag == "array type" then
-      return types.array
+    return types.array
   else
     self.error("'%s' type not yet implemented", type.tag)
   end
@@ -201,12 +165,26 @@ end
 
 function Compiler:strType(type)
   if type.tag == "primitive type" then
-      return type.t
+    return type.t
   elseif type.tag == "array type" then
-      return string.format("[%s]", self:strType(type.t))
+    return string.format("[%s]", self:strType(type.t))
   else
     return "UNKNOW"
   end
+end
+
+function Compiler:createVar(id, type, reg)
+  self.vars[#self.vars + 1] = {id = id, type = type, reg = reg}
+end
+
+function Compiler:codeEmptyVar(id, reg, varType)
+  if not self:typeExists(varType) then
+    self.error("declaring a var with type '%s' that does not exists", self:strType(expType))
+  end
+
+  local varRawType = self:getRawType(varType)
+  self.emit("%s = alloca %s", reg, typeToLLVM[varRawType])
+  self:createVar(id, varType, reg)
 end
 
 function Compiler:codeVar(id, reg, value, expType, varType)
@@ -221,260 +199,463 @@ function Compiler:codeVar(id, reg, value, expType, varType)
   local expRawType = self:getRawType(expType)
   local varRawType = self:getRawType(varType)
 
-  self.emit(self.ident() .. " %s = alloca %s", reg, typeToLLVM[expRawType]) 
-  self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[varRawType], value, reg)
-  self.vars[#self.vars + 1] = {id = id, type = varType, reg = reg}
+  self.emit("%s = alloca %s", reg, typeToLLVM[expRawType])
+  self.emit("store %s %s, ptr %s", typeToLLVM[varRawType], value, reg)
+  self:createVar(id, varType, reg)
 end
 
-function Compiler:codeMalloc(reg, type, size)
-  local mallocSize = 0
+function Compiler:codeMalloc(reg, type, arraySize)
+  local typeSizeInBytes = 0
 
   if type.tag == "array type" then
-    mallocSize = typeSize[types.array]
+    typeSizeInBytes = typeSize[types.array]
   elseif type.tag == "primitive type" then
-    mallocSize = typeSize[type.t]
+    typeSizeInBytes = typeSize[type.type]
   else
     self.error("Type '%s' not yet implemented", self:strType(type))
   end
 
-  self.emit(self.ident() .. " %s = call ptr @malloc(i64 %s)", reg, mallocSize)
+  local mallocSize = self:newTemp()
+  self.emit("%s = mul i32 %s, %s", mallocSize, typeSizeInBytes, arraySize)
+  local i64MallocSize = self:newTemp()
+  self.emit("%s = sext i32 %s to i64", i64MallocSize, mallocSize)
+
+  self.emit("%s = call ptr @malloc(i64 %s)", reg, i64MallocSize)
 end
 
 function Compiler:codeGetElementPtr(res, type, var, index)
   local temp = self:newTemp()
-  self.emit(self.ident() .. "%s = load ptr, ptr %s", temp, var)
-  self.emit(self.ident() .. "%s = getelementptr inbounds %s, ptr %s, i32 %s", res, type, temp, index)
+  self.emit("%s = load ptr, ptr %s", temp, var)
+  self.emit("%s = getelementptr inbounds %s, ptr %s, i32 %s", res, type, temp, index)
 end
 
-function Compiler:newFindVar(var)
- if var.tag == "varExp" then
+function Compiler:findVar(var)
+  if var.tag == "varId" then
     for i = #self.vars, 1, -1 do
-        if self.vars[i].id == var.t then
-          local res =  {reg = self.vars[i].reg, type = self.vars[i].type}
-          return res
-        end
+      if self.vars[i].id == var.id then
+        return {reg = self.vars[i].reg, type = self.vars[i].type}
+      end
     end
-  elseif var.tag == "indexed" then
-    local value = self:newFindVar(var.t)
+    self.error("Variable '%s' not found", var.t)  
+  elseif var.tag == "varArray" then
+    local value = self:findVar(var.array)
 
-    if value == nil then
-      self.error("attempt to index a nil value")
-    end
-
-    if value.type.tag == "primitive type" then
+    if value.type.tag ~= "array type" then
       self.error("attempt to index a '%s' value", self:strType(value.type))
     end
 
     local res = self:newTemp()
     local index = self:codeExp(var.index)
-    local varRawType = self:getRawType(value.type.t)
+    local varRawType = self:getRawType(value.type)
 
     self:codeGetElementPtr(res, typeToLLVM[varRawType], value.reg, index.value)
-    return {reg = res, type = {tag = value.type.t.tag, t = value.type.t.t}}
-  end
-end
-
-function Compiler:findVar(var)
-  local res = self:newFindVar(var)
-  if res == nil then
-    self.error("Variable '%s' not found", var.t)
-  end
-  return res
+    return {reg = res, type = {tag = value.type.tag, type = value.type}}
+    end
 end
 
 function Compiler:isValidReturnType(retType)
-    local expectedReturnType = self.funcs[self.currentFunc.name].retType
-    return self:typeIsEqual(expectedReturnType, retType), expectedReturnType
+  local expectedReturnType = self.funcs[self.currentFunc.name].retType
+  return self:typeIsEqual(expectedReturnType, retType), expectedReturnType
 end
 
 function Compiler:exp(value, type)
   return {value = value, type = type}
 end
 
+-- MARK: Expression Functions
 function Compiler:codeExp(exp)
-    local tag = exp.tag
-    if tag == "number int" then
-        return self:exp(exp.num,  {tag = "primitive type", t = types.int})
-    elseif tag == "number double" then
-      return self:exp(exp.num, {tag = "primitive type", t = types.double})
-    elseif tag == "var" then
-        local var = self:findVar(exp.var)
-        local regV = var.reg
-        local res = self:newTemp()
-        local varRawType = self:getRawType(var.type)
-        self.emit(self.ident() .. " %s = load %s, ptr %s",res, typeToLLVM[varRawType], regV)
-        return self:exp(res, var.type)
-    elseif tag == "unarith" then
-        local e = self:codeExp(exp.e)
-        local res = self:newTemp()
-        local eRawType = self:getRawType(e.type)
-        self.emit(self.ident() .. " %s = %s %s %s, %s", res, binAOps["-"][eRawType], typeToLLVM[eRawType], eRawType == types.double and '0.0' or '0' , e.value)
-        return self:exp(res, e.type)
-    elseif tag == "binarith" then
-        local r1 = self:codeExp(exp.e1)
-        local r2 = self:codeExp(exp.e2)
+  local tag = exp.tag
+  if tag == "number int" then
+    return self:codeExpNumberInt(exp)
+  elseif tag == "number double" then
+    return self:codeExpNumberDouble(exp)
+  elseif tag == "var" then
+    return self:codeExpVar(exp)
+  elseif tag == "unarith" then
+    return self:codeExpUnarith(exp)
+  elseif tag == "binarith" then
+    return self:codeExpBinarith(exp)
+  elseif tag == "binarith comp" then
+    return self:codeExpBinarithComp(exp)
+  elseif tag == "call" then
+    return self:codeExpCall(exp)
+  elseif tag == "cast" then
+    return self:codeExpCast()
+  elseif tag == "new" then
+    return self:codeExpNew(exp)
+  else
+    self.error("'%s': expression not yet implemented", tag)
+  end
+end
 
-        if not self:typeIsEqual(r1.type, r2.type) then
-          self.error("Invalid binAops type")
-        end
+function Compiler:codeExpNumberInt(exp)
+  return self:exp(exp.num, { tag = "primitive type", type = types.int})
+end
 
-        local r1RawType = self:getRawType(r1.type)
+function Compiler:codeExpNumberDouble(exp)
+  return self:exp(exp.num, {tag = "primitive type", type = types.double})
+end
 
-        local opType = typeToLLVM[r1RawType]
-        local opBinarith = binAOps[exp.op][r1RawType]
+function Compiler:codeExpVar(exp)
+  local var = self:findVar(exp.var)
+  local regV = var.reg
+  local res = self:newTemp()
+  local varRawType = self:getRawType(var.type)
+  self.emit("%s = load %s, ptr %s", res, typeToLLVM[varRawType], regV)
+  return self:exp(res, var.type)
+end
 
-        local res = self:newTemp()
-        self.emit(self.ident() .. " %s = %s %s %s, %s", res, opBinarith, opType, r1.value, r2.value)
-        return self:exp(res, r1.type)
-    elseif tag == "binarith comp" then
-        local r1 = self:codeExp(exp.e1)
-        local r2 = self:codeExp(exp.e2)
+function Compiler:codeExpUnarith(exp)
+  local e = self:codeExp(exp.e)
+  local res = self:newTemp()
+  local eRawType = self:getRawType(e.type)
+  self.emit("%s = %s %s %s, %s", res, binAOps["-"][eRawType], typeToLLVM[eRawType],
+      eRawType == types.double and '0.0' or '0', e.value)
+  return self:exp(res, e.type)
+end
 
-        if not self:typeIsEqual(r1.type, r2.type) then
-          self.error("Invalid binComp Type type")
-        end
+function Compiler:codeExpBinarith(exp)
+  local r1 = self:codeExp(exp.e1)
+  local r2 = self:codeExp(exp.e2)
 
-        local r1RawType = self:getRawType(r1.type)
+  if not self:typeIsEqual(r1.type, r2.type) then
+      self.error("Invalid binAops type")
+  end
 
-        local opType = typeToLLVM[r1RawType]
-        local opBinarithComp = binCOps[exp.op][r1RawType]
+  local r1RawType = self:getRawType(r1.type)
 
-        local res1 = self:newTemp()
-        local res2 = self:newTemp()
-        local compCommand = r1RawType == types.double and 'fcmp' or 'icmp'
+  local opType = typeToLLVM[r1RawType]
+  local opBinarith = binAOps[exp.op][r1RawType]
 
-        self.emit(self.ident() .. " %s = %s %s %s %s, %s", res1, compCommand, opBinarithComp, opType, r1.value, r2.value)
-        self.emit(self.ident() .. " %s = zext i1 %s to i32", res2, res1)
-        return self:exp(res2, {tag = "primitive type", t = types.int})
+  local res = self:newTemp()
+  self.emit("%s = %s %s %s, %s", res, opBinarith, opType, r1.value, r2.value)
+  return self:exp(res, r1.type)
+end
+
+function Compiler:codeExpBinarithComp(exp)
+  local r1 = self:codeExp(exp.e1)
+  local r2 = self:codeExp(exp.e2)
+
+  if not self:typeIsEqual(r1.type, r2.type) then
+      self.error("Invalid binComp Type type")
+  end
+
+  local r1RawType = self:getRawType(r1.type)
+
+  local opType = typeToLLVM[r1RawType]
+  local opBinarithComp = binCOps[exp.op][r1RawType]
+
+  local res1 = self:newTemp()
+  local res2 = self:newTemp()
+  local compCommand = r1RawType == types.double and 'fcmp' or 'icmp'
+
+  self.emit("%s = %s %s %s %s, %s", res1, compCommand, opBinarithComp, opType, r1.value, r2.value)
+  self.emit("%s = zext i1 %s to i32", res2, res1)
+  return self:exp(res2, {
+      tag = "primitive type",
+      t = types.int
+  })
+end
+
+function Compiler:codeExpCall(exp)
+  local st = {name = exp.name, params = exp.params}
+  local callReturnValue, callReturnType = self:codeStatCall(st)
+  return self:exp(callReturnValue, callReturnType)
+end
+
+function Compiler:codeExpCast(exp)
+  if not self:typeExists(exp.type) then
+    self.error("cast: type '%s' does not exists", self:strType(exp.type))
+  end 
+
+  local res = self:codeExp(exp.e)
+
+  if self:typeIsEqual(res.type, exp.type) then
+    -- self.error("cast: '%s' already a '%s' value", exp.e, exp.type) vira warning
+  end
+  local castedValue = self:codeCast(res.value, res.type, exp.type)
+  return self:exp(castedValue, exp.type)
+end
+
+function Compiler:codeExpNew(exp)
+  local size = self:codeExp(exp.size)
+  local expType = exp.type
+
+  if expType.tag ~= "array type" then
+      self.error("invalid type for new, expected array type, but received '%s'", self:strType(exp.type))
+  end
+
+  local res = self:newTemp()
+  self:codeMalloc(res, expType.nestedType, size.value)
+
+  return self:exp(res, exp.type)
+end
+
+-- MARK: Statement Functions
+function Compiler:codeStat(st)
+    local tag = st.tag
+    if tag == "seq" then
+      self:codeStatSeq(st)
+    elseif tag == "block" then
+      self:codeStatBlock(st)
     elseif tag == "call" then
-      local callReturnValue, callReturnType = self:codeCall(exp.name, exp.params)
-      return self:exp(callReturnValue, callReturnType)
-    elseif tag == "cast" then
-      if not self:typeExists(exp.type) then
-        self.error("cast: type '%s' does not exists", self:strType(exp.type))
-      end
-
-      local res = self:codeExp(exp.e)
-
-      if self:typeIsEqual(res.type, exp.type) then
-        --self.error("cast: '%s' already a '%s' value", exp.e, exp.type) vira warning
-      end
-      local castedValue = self:codeCast(res.value, res.type, exp.type)
-      return self:exp(castedValue, exp.type)
-    elseif tag == "new" then
-      local size = exp.size
-
-      if exp.type.tag ~= "array type" then
-        self.error("invalid type for new, expected array type, but received '%s'", self:strType(exp.type))
-      end
-
-      local res = self:newTemp()
-      self:codeMalloc(res, exp.type.t, exp.type.size)
-      
-      return self:exp(res, exp.type)
+        self:codeStatCall(st)
+    elseif tag == "return" then
+      self:codeStatReturn(st)
+    elseif tag == "if" then
+      self:codeStatIf(st)
+    elseif tag == "while" then
+      self:codeStatWhile(st)
+    elseif tag == "print" then
+      self:codeStatPrint(st)
+    elseif tag == "createVar" then
+      self:codeStatVar(st)
+    elseif tag == "assignVar" then
+      self:codeStatAss(st)
     else
-        self.error("'%s': expression not yet implemented", tag)
+        self.error("'%s': statement not yet implemented", tag)
     end
 end
 
-function Compiler:codeStat (st)
-    local tag = st.tag
-    if tag == "seq" then
-      self:codeStat(st.s1)
-      self:codeStat(st.s2)
-    elseif tag == "block" then
-      local vars = self.vars
-      local level = #vars
-      self:codeStat(st.body)
-      for i = #vars, level + 1, -1 do
-        table.remove(vars)
-      end
-    elseif tag == "call" then
-      self:codeCall(st.name, st.params)
-    elseif tag == "return" then
-        local returnExp = ""
-        local returnType = {tag = "primitive type", t = types.void}
+function Compiler:codeStatSeq(st) 
+  self:codeStat(st.s1)
+  self:codeStat(st.s2)
+end
 
-        if st.e and st.e ~= "" then
-          returnExp = self:codeExp(st.e)
-          returnType = returnExp.type
-        end
+function Compiler:codeStatBlock(st)
+  local vars = self.vars
+  local level = #vars
+  self:codeStat(st.body)
+  for i = #vars, level + 1, -1 do
+      table.remove(vars)
+  end
+end
 
-        local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
-        if not isValidReturnType then
-          self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'", self.currentFunc.name, self:strType(expectedReturnType), self:strType(returnType))
-        end
-
-        local rawReturnType = self:getRawType(returnType)
-
-        self.emit(self.ident() .. " ret %s %s", typeToLLVM[rawReturnType], returnExp.value or "")
-    elseif tag == "if" then
-      local Lthen = self:newLabel()
-      local Lelse = self:newLabel()
-      local Lend = self:newLabel()
-
-      self:codeCond(st.cond, Lthen, st.els and Lelse or Lend)
-
-      self:codeLabel(Lthen)
-      self:codeStat(st.th)
-      self:codeJmp(Lend)
-
-      if st.els then
-        self:codeLabel(Lelse)
-        self:codeStat(st.els)
-        self:codeJmp(Lend)
-      end
-
-      self:codeLabel(Lend)
-    elseif tag == "while" then
-      local Lcond = self:newLabel()
-      local Lbody = self:newLabel()
-      local Lend = self:newLabel()
-      self:codeJmp(Lcond)
-      self:codeLabel(Lcond)
-      self:codeCond(st.cond, Lbody, Lend)
-      self:codeLabel(Lbody)
-      self:codeStat(st.body)
-      self:codeJmp(Lcond)
-      self:codeLabel(Lend)
-    elseif tag == "print" then
-      local exp = self:codeExp(st.e)
-      local reg = exp.value
-      local expType = exp.type
-      local expRawType = self:getRawType(expType)
-      if expRawType == types.double then
-        self.emit(self.ident() .. " call void @printD(double %s)", reg)
-      else
-        self.emit(self.ident() .. " call void @printI(i32 %s)", reg)
-      end
-    elseif tag == "var" then
-      local exp = self:codeExp(st.e)
-      local expValue = exp.value
-      local expType = exp.type
-      local reg = self:newTemp()
-      local varType = st.type
-
-      self:codeVar(st.id, reg, expValue, expType, varType)
-    elseif tag == "ass" then
-      local res = self:codeExp(st.e)
-      local regE = res.value
-      local var = self:findVar(st.var)
-
-      if not self:typeIsEqual(res.type, var.type) then
-        self.error("Tried to assing '%s' value to '%s' var", self:strType(res.type), self:strType(var.type))
-      end
-
-      local rawResType = self:getRawType(res.type)
-
-      self.emit(self.ident() .. " store %s %s, ptr %s", typeToLLVM[rawResType], regE, var.reg)
-    else
-      self.error("'%s': statement not yet implemented", tag)
-    end
+function Compiler:codeStatCall(st)
+  local funcName = st.name
+  local params = st.params
+  local func = self.funcs[funcName]
+  if not func then
+      self.error("Attempt to call a nil value '%s'", func.name)
   end
 
+  if #params ~= func.nArgs then
+      self.error("Expected %d parameters, but received %d", func.nArgs, #params)
+  end
+
+  local paramsTable = {}
+  for _, param in ipairs(params) do
+      local exp = self:codeExp(param)
+      table.insert(paramsTable, exp)
+  end
+
+  local paramsString = ""
+  for i, param in ipairs(paramsTable) do
+      local paramRawType = self:getRawType(param.type)
+      local paramValue = param.value
+
+      if not self:typeIsEqual(param.type, func.argsType[i]) then
+          self.error("expected parameter of type '%s', but received type '%s'", self:strType(func.argsType[i]),
+              self:strType(param.type))
+      end
+      paramsString = paramsString .. typeToLLVM[paramRawType] .. " " .. paramValue .. ', '
+  end
+  paramsString = paramsString:sub(1, -3)
+
+  local funcRawRetType = self:getRawType(func.retType)
+  local reg = self:newTemp()
+  self.emit("%s = call %s @%s(%s)", reg, typeToLLVM[funcRawRetType], funcName, paramsString)
+
+  return reg, func.retType
+end
+
+function Compiler:codeStatReturn(st)
+  local returnExp = ""
+  local returnType = {
+      tag = "primitive type",
+      t = types.void
+  }
+
+  if st.e and st.e ~= "" then
+      returnExp = self:codeExp(st.e)
+      returnType = returnExp.type
+  end
+
+  local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
+  if not isValidReturnType then
+      self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'",
+          self.currentFunc.name, self:strType(expectedReturnType), self:strType(returnType))
+  end
+
+  local rawReturnType = self:getRawType(returnType)
+
+  self.emit("ret %s %s", typeToLLVM[rawReturnType], returnExp.value or "")
+end
+
+function Compiler:codeStatIf(st)
+  local Lthen = self:newLabel()
+  local Lelse = self:newLabel()
+  local Lend = self:newLabel()
+
+  self:codeCond(st.cond, Lthen, st.els and Lelse or Lend)
+
+  self:codeLabel(Lthen)
+  self:codeStat(st.th)
+  self:codeJmp(Lend)
+
+  if st.els then
+      self:codeLabel(Lelse)
+      self:codeStat(st.els)
+      self:codeJmp(Lend)
+  end
+
+  self:codeLabel(Lend)
+end
+
+function Compiler:codeStatWhile(st)
+  local Lcond = self:newLabel()
+  local Lbody = self:newLabel()
+  local Lend = self:newLabel()
+  self:codeJmp(Lcond)
+  self:codeLabel(Lcond)
+  self:codeCond(st.cond, Lbody, Lend)
+  self:codeLabel(Lbody)
+  self:codeStat(st.body)
+  self:codeJmp(Lcond)
+  self:codeLabel(Lend)
+end
+
+function Compiler:codeStatPrint(st)
+  local exp = self:codeExp(st.e)
+  local reg = exp.value
+  local expType = exp.type
+  local expRawType = self:getRawType(expType)
+  if expRawType == types.double then
+      self.emit("call void @printD(double %s)", reg)
+  else
+      self.emit("call void @printI(i32 %s)", reg)
+  end
+end
+
+function Compiler:codeStatVar(st)
+  local reg = self:newTemp()
+  local varType = st.type
+
+  if st.e == nil then
+    self:codeEmptyVar(st.id, reg, varType)
+    return
+  end
+  
+  local exp = self:codeExp(st.e)
+  local expValue = exp.value
+  local expType = exp.type
+
+  self:codeVar(st.id, reg, expValue, expType, varType)
+end
+
+function Compiler:codeStatAss(st)
+  local res = self:codeExp(st.e)
+  local regE = res.value
+  local var = self:findVar(st.var)
+
+  if not self:typeIsEqual(res.type, var.type) then
+      self.error("Tried to assing '%s' value to '%s' var", self:strType(res.type), self:strType(var.type))
+  end
+
+  local rawResType = self:getRawType(res.type)
+
+  self.emit("store %s %s, ptr %s", typeToLLVM[rawResType], regE, var.reg)
+end
+
+-- MARK: Prog Functions
+function Compiler:codeFunc(func)
+    if func.type == "void" then
+        func.type = {
+            tag = "primitive type",
+            t = types.void
+        }
+    end
+
+    self.funcs[func.name] = {
+        retType = func.type,
+        nArgs = #func.args,
+        argsType = {}
+    }
+    self.currentFunc.name = func.name
+
+    self:codeFuncHeader(func)
+    self:codeStat(func.body)
+
+    local funcRawReturnType = self:getRawType(func.type)
+
+    if funcRawReturnType == types.array then
+        self.emit("ret ptr")
+    elseif funcRawReturnType == types.void then
+        self.emit("ret void")
+    elseif funcRawReturnType == types.int then
+        self.emit("ret i32 0")
+    elseif funcRawReturnType == types.double then
+        self.emit("ret double 0.0")
+    end
+
+    self.emit("}")
+
+    self.currentFunc.name = ""
+end
+
+function Compiler:codeFuncHeader(func)
+    local args = ""
+    local params = {}
+    for _, arg in ipairs(func.args) do
+        local regArg = self:newTemp()
+
+        local argType = arg.type
+        local argId = arg.id
+
+        if not self:typeExists(argType) then
+            self.error(" Type '%s' of argument '%s' does not exists", argType, argId)
+        end
+
+        local argRawType = self:getRawType(argType)
+
+        if argRawType == types.void then
+            self.error("void type only allowed for function results")
+        end
+
+        table.insert(self.funcs[func.name].argsType, argType)
+
+        args = args .. typeToLLVM[argRawType] .. ' ' .. regArg .. ', '
+        table.insert(params, {
+            id = argId,
+            type = argType,
+            reg = self:newTemp(),
+            value = regArg
+        })
+    end
+
+    args = args:sub(1, -3)
+
+    local funcRawType = self:getRawType(func.type)
+    self.emit("define %s @%s(%s) {", typeToLLVM[funcRawType], func.name, args)
+
+    for _, param in ipairs(params) do
+        self:codeVar(param.id, param.reg, param.value, param.type, param.type)
+    end
+end
+
+function Compiler:codeProg(prog)
+    for i = 1, #prog do
+        self:codeFunc(prog[i])
+    end
+    if not self.funcs["main"] then
+        self.error("missing main function")
+    end
+end
+
+-- MARK: Premable
 local premable = [[
 @.str = private unnamed_addr constant [4 x i8] c"%d\0A\00"
-@.strD = private unnamed_addr constant [6 x i8] c"%.16g\00"
+@.strD = private unnamed_addr constant [7 x i8] c"%.16g\0A\00"
 
 declare dso_local i32 @printf(i8*, ...)
 declare ptr @malloc(i64 noundef)
@@ -491,89 +672,13 @@ define internal void @printD(double %x) {
 
 ]]
 
-
-function Compiler:codeFunc (func)
-    if func.type == "void" then
-      func.type = {tag = "primitive type", t = types.void}
-    end
-
-    self.funcs[func.name] = {
-      retType = func.type,
-      nArgs = #func.args,
-      argsType = {}
-    }
-    self.currentFunc.name = func.name
-
-    self:codeFuncHeader(func)
-    self:codeStat(func.body)
-
-    local funcRawReturnType = self:getRawType(func.type)
-
-    if funcRawReturnType == types.array then
-      self.emit(self.ident() .. " ret ptr")
-    elseif funcRawReturnType == types.void then
-      self.emit(self.ident() .. " ret void")
-    elseif funcRawReturnType == types.int then
-      self.emit(self.ident() .. " ret i32 0")
-    elseif funcRawReturnType == types.double then
-      self.emit(self.ident() .. "ret double 0.0")
-    end
-
-    self.emit("}")
-
-    self.currentFunc.name = ""
-end
-
-function Compiler:codeFuncHeader(func)
-  local args = ""
-  local params = {}
-  for _, arg in ipairs(func.args) do
-    local regArg = self:newTemp()
-    
-    local argType = arg.type
-    local argId = arg.id
-
-    if not self:typeExists(argType) then
-      self.error(" Type '%s' of argument '%s' does not exists", argType, argId)
-    end
-
-    local argRawType = self:getRawType(argType)
-
-    if argRawType == types.void then
-      self.error("void type only allowed for function results")
-    end
-
-    table.insert(self.funcs[func.name].argsType, argType)
-    
-    args = args .. typeToLLVM[argRawType] .. ' ' .. regArg .. ', '
-    table.insert(params, {id = argId, type = argType, reg = self:newTemp(), value = regArg})
-  end
-
-  args = args:sub(1, -3)
-
-  local funcRawType = self:getRawType(func.type)
-  self.emit("define %s @%s(%s) {", typeToLLVM[funcRawType], func.name, args)
-
-  for _, param in ipairs(params) do 
-    self:codeVar(param.id, param.reg, param.value, param.type, param.type) 
-  end
-end
-
-function Compiler:codeProg (prog)
-    for i = 1, #prog do
-      self:codeFunc(prog[i])
-    end
-    if not self.funcs["main"] then
-      self.error("missing main function")
-    end
-end
-
 local input = io.read("a")
 local tree = grammar.prog:match(input)
 if not tree then
-    Compiler.error("syntax error near <<%s|%s>>", string.sub(input, grammar.lastpos - 10, grammar.lastpos - 1),  string.sub(input, grammar.lastpos, grammar.lastpos + 10))
+    Compiler.error("syntax error near <<%s|%s>>", string.sub(input, grammar.lastpos - 10, grammar.lastpos - 1),
+        string.sub(input, grammar.lastpos, grammar.lastpos + 10))
 end
 
 -- print(pt.pt(tree))
 Compiler.emit(premable)
-local e = Compiler:codeProg(tree) 
+local e = Compiler:codeProg(tree)

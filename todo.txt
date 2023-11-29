@@ -8,3 +8,13 @@
 9 - criar array
 10 - arrary com tamanho fixo
 11 - ver em c
+12 - var id nomes t
+13 code int exp
+14 - modificar codeMalloc size
+
+
+
+
+terminar array
+expInt e expFloat
+fazer algo da nossa cabeca

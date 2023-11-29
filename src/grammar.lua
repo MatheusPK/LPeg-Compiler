@@ -49,20 +49,11 @@ local function foldCast(t)
     return res
 end
 
-local function foldType(t)
-    local res = t[1]
-    for i = 2, #t, 1 do
-        res = {tag = "type", t = res, category = t[i].tag}
-    end
-
-    return res
-end
-
 local function foldVar(t)
-    local res = {tag = "varExp", t = t[1]}
+    local res = {tag = "varId", id = t[1]}
 
     for i = 2, #t, 1 do
-        res = {tag = "indexed", t = res, index = t[i]}
+        res = {tag = "varArray", array = res, index = t[i]}
     end
 
     return res
@@ -150,15 +141,15 @@ grammar.prog = lpeg.P {"defs",
     end,
     block = OB * stats * CB / node("block", "body"),
     stat = Prt * exp / node("print", "e")
-        + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * CL * type * Eq * (exp) / node("var", "id", "type", "e")
-        + var * Eq * exp / node("ass", "var", "e")
+        + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * CL * type * (Eq * (exp))^0 / node("createVar", "id", "type", "e")
+        + var * Eq * exp / node("assignVar", "var", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
         + call
         + Rw"return" * (exp + lpeg.C"") / node("return", "e"),
     call = Id * OP * parameters * CP / node("call", "name", "params"),
-    type = (OBK * type * CBK) / node("array type", "t")
-        + Id / node("primitive type", "t"),
+    type = (OBK * type * CBK) / node("array type", "nestedType")
+        + Id / node("primitive type", "type"),
     new = Rw"new" * type * OP * exp * CP / node("new", "type", "size"),
     arguments = lpeg.Ct((Id * CL * type * (CM * Id * CL * type)^0)^-1) / foldArgs,
     parameters = lpeg.Ct((exp * (CM * exp)^0)^-1),
