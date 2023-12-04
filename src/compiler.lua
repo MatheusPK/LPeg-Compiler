@@ -293,7 +293,7 @@ function Compiler:codeExp(exp)
   elseif tag == "call" then
     return self:codeExpCall(exp)
   elseif tag == "cast" then
-    return self:codeExpCast()
+    return self:codeExpCast(exp)
   elseif tag == "new" then
     return self:codeExpNew(exp)
   else

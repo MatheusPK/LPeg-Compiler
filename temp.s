@@ -82,6 +82,9 @@ _main:                                  ; @main
 	str	x0, [sp, #8]
 	mov	w0, w8
 	bl	_printI
+	ldr	x8, [sp, #8]
+	ldr	w0, [x8, #40]
+	bl	_printI
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
 	mov	w0, wzr
 	add	sp, sp, #32

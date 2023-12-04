@@ -42,5 +42,11 @@ store ptr %T13, ptr %T12
 %T15 = getelementptr inbounds i32, ptr %T14, i64 %T16
 %T17 = load i32, ptr %T15
 call void @printI(i32 %T17)
+%T18 = load ptr, ptr %T12
+%T19 = fptosi double 10.0 to i32
+%T21 = sext i32 %T19 to i64
+%T20 = getelementptr inbounds i32, ptr %T18, i64 %T21
+%T22 = load i32, ptr %T20
+call void @printI(i32 %T22)
 ret i32 0
 }
