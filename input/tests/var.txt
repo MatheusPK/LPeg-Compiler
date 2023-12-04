@@ -1,0 +1,6 @@
+fun main(): int {
+    var a: int = 10;
+    var b: double = 2.0;
+    @a;
+    @b;
+}

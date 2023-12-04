@@ -505,8 +505,14 @@ function Compiler:codeStatCall(st)
   paramsString = paramsString:sub(1, -3)
 
   local funcRawRetType = self:getRawType(func.retType)
-  local reg = self:newTemp()
-  self.emit("%s = call %s @%s(%s)", reg, typeToLLVM[funcRawRetType], funcName, paramsString)
+  local reg = nil
+
+  if func.retType.type == types.void then
+    self.emit("call %s @%s(%s)", typeToLLVM[funcRawRetType], funcName, paramsString)
+  else 
+    reg = self:newTemp()
+    self.emit("%s = call %s @%s(%s)", reg, typeToLLVM[funcRawRetType], funcName, paramsString)
+  end
 
   return reg, func.retType
 end
@@ -614,7 +620,7 @@ function Compiler:codeFunc(func)
     if func.type == "void" then
         func.type = {
             tag = "primitive type",
-            t = types.void
+            type = types.void
         }
     end
 

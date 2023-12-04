@@ -1,0 +1,8 @@
+fun main(): int {
+    var y: double = 10.5;
+    @y as int;
+
+
+    var x: int = 15;
+    @x as double + 2.5;
+}

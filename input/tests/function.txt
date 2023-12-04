@@ -1,0 +1,27 @@
+fun fat(x: int): int {
+    if x == 0 {
+        return 1;
+    };
+
+    return x * fat(x - 1);
+}
+
+fun fatWhile(x: int): int {
+    if x == 0 {
+        return 1;
+    } else {
+    var res: int = 1;
+    while x > 0 {
+        res = res * x; 
+        x = x - 1;
+    };
+
+    return res;
+    };
+}
+
+fun main(): int {
+    @fat(5) + fat(4);
+    @fatWhile(5) + fatWhile(4);
+    return 0;
+}
