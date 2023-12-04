@@ -165,9 +165,9 @@ end
 
 function Compiler:strType(type)
   if type.tag == "primitive type" then
-    return type.t
+    return type.type
   elseif type.tag == "array type" then
-    return string.format("[%s]", self:strType(type.t))
+    return string.format("[%s]", self:strType(type.nestedType))
   else
     return "UNKNOW"
   end
@@ -223,34 +223,45 @@ function Compiler:codeMalloc(reg, type, arraySize)
   self.emit("%s = call ptr @malloc(i64 %s)", reg, i64MallocSize)
 end
 
-function Compiler:codeGetElementPtr(res, type, var, index)
-  local temp = self:newTemp()
-  self.emit("%s = load ptr, ptr %s", temp, var)
-  self.emit("%s = getelementptr inbounds %s, ptr %s, i32 %s", res, type, temp, index)
+function Compiler:codeGetElementPtr(res, type, var, index, varLoaded)
+  local i64Index = self:newTemp()
+  self.emit("%s = sext i32 %s to i64", i64Index, index)
+  
+  if not varLoaded then
+    local temp = self:newTemp()
+    self.emit("%s = load ptr, ptr %s", temp, var)
+    var = temp
+  end
+
+  self.emit("%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, var, i64Index)
 end
 
-function Compiler:findVar(var)
-  if var.tag == "varId" then
-    for i = #self.vars, 1, -1 do
-      if self.vars[i].id == var.id then
-        return {reg = self.vars[i].reg, type = self.vars[i].type}
-      end
+function Compiler:findVar(id)
+  for i = #self.vars, 1, -1 do
+    if self.vars[i].id == id then
+      return {reg = self.vars[i].reg, type = self.vars[i].type}
     end
-    self.error("Variable '%s' not found", var.t)  
-  elseif var.tag == "varArray" then
-    local value = self:findVar(var.array)
+  end
+  self.error("Variable '%s' not found", id)  
+end
 
-    if value.type.tag ~= "array type" then
-      self.error("attempt to index a '%s' value", self:strType(value.type))
-    end
-
-    local res = self:newTemp()
+function Compiler:findIndexedVar(var)
+  if var.tag == "indexed" then
+    local indexedValue = self:findIndexedVar(var.e)
     local index = self:codeExp(var.index)
-    local varRawType = self:getRawType(value.type)
 
-    self:codeGetElementPtr(res, typeToLLVM[varRawType], value.reg, index.value)
-    return {reg = res, type = {tag = value.type.tag, type = value.type}}
+    if indexedValue.type.tag ~= "array type" then
+      self.error("attempt to index a '%s' value", self:strType(indexedValue.type))
     end
+    local rawType = self:getRawType(indexedValue.type.nestedType)
+
+    local arrayPtrRes = self:newTemp()
+    self:codeGetElementPtr(arrayPtrRes, typeToLLVM[rawType], indexedValue.reg, index.value) 
+
+    return {reg = arrayPtrRes, type = indexedValue.type.nestedType}
+  elseif var.tag == "var" then
+    return self:findVar(var.id)
+  end
 end
 
 function Compiler:isValidReturnType(retType)
@@ -258,8 +269,8 @@ function Compiler:isValidReturnType(retType)
   return self:typeIsEqual(expectedReturnType, retType), expectedReturnType
 end
 
-function Compiler:exp(value, type)
-  return {value = value, type = type}
+function Compiler:exp(value, type, varWasLoaded)
+  return {value = value, type = type, varWasLoaded = varWasLoaded or false}
 end
 
 -- MARK: Expression Functions
@@ -271,6 +282,8 @@ function Compiler:codeExp(exp)
     return self:codeExpNumberDouble(exp)
   elseif tag == "var" then
     return self:codeExpVar(exp)
+  elseif tag == "indexed" then
+    return self:codeExpIndexed(exp)
   elseif tag == "unarith" then
     return self:codeExpUnarith(exp)
   elseif tag == "binarith" then
@@ -297,12 +310,12 @@ function Compiler:codeExpNumberDouble(exp)
 end
 
 function Compiler:codeExpVar(exp)
-  local var = self:findVar(exp.var)
+  local var = self:findVar(exp.id)
   local regV = var.reg
   local res = self:newTemp()
   local varRawType = self:getRawType(var.type)
   self.emit("%s = load %s, ptr %s", res, typeToLLVM[varRawType], regV)
-  return self:exp(res, var.type)
+  return self:exp(res, var.type, true)
 end
 
 function Compiler:codeExpUnarith(exp)
@@ -391,6 +404,35 @@ function Compiler:codeExpNew(exp)
   return self:exp(res, exp.type)
 end
 
+function Compiler:codeExpIndexed(exp)
+  local indexedValue = self:codeExp(exp.e)
+  local index = self:codeExp(exp.index)
+
+  if indexedValue.type.tag ~= "array type" then
+    self.error("attempt to index a '%s' value", self:strType(indexedValue.type))
+  end
+
+  local rawType = self:getRawType(indexedValue.type.nestedType)
+
+  local arrayPtrRes = self:newTemp()
+  self:codeGetElementPtr(arrayPtrRes, typeToLLVM[rawType], indexedValue.value, index.value, indexedValue.varWasLoaded)  
+
+  if indexedValue.type.nestedType.tag == "primitive type" then
+    local arrayValueRes = self:newTemp()
+    local arrayValueRawType = self:getRawType(indexedValue.type.nestedType)
+    self.emit("%s = load %s, ptr %s", arrayValueRes, typeToLLVM[arrayValueRawType], arrayPtrRes)
+    return self:exp(arrayValueRes, indexedValue.type.nestedType)
+  end
+
+  return self:exp(arrayPtrRes, indexedValue.type.nestedType)
+
+  -- local var = self:findIndexedVar(exp)
+  -- local arrayValueRes = self:newTemp()
+  -- local arrayValueRawType = self:getRawType(var.type)
+  -- self.emit("%s = load %s, ptr %s", arrayValueRes, typeToLLVM[arrayValueRawType], var.reg)
+  -- return self:exp(arrayValueRes, var.type)
+end
+
 -- MARK: Statement Functions
 function Compiler:codeStat(st)
     local tag = st.tag
@@ -409,9 +451,9 @@ function Compiler:codeStat(st)
     elseif tag == "print" then
       self:codeStatPrint(st)
     elseif tag == "createVar" then
-      self:codeStatVar(st)
+      self:codeStatCreateVar(st)
     elseif tag == "assignVar" then
-      self:codeStatAss(st)
+      self:codeStatAssignAss(st)
     else
         self.error("'%s': statement not yet implemented", tag)
     end
@@ -537,7 +579,7 @@ function Compiler:codeStatPrint(st)
   end
 end
 
-function Compiler:codeStatVar(st)
+function Compiler:codeStatCreateVar(st)
   local reg = self:newTemp()
   local varType = st.type
 
@@ -553,10 +595,10 @@ function Compiler:codeStatVar(st)
   self:codeVar(st.id, reg, expValue, expType, varType)
 end
 
-function Compiler:codeStatAss(st)
+function Compiler:codeStatAssignAss(st)
   local res = self:codeExp(st.e)
   local regE = res.value
-  local var = self:findVar(st.var)
+  local var = self:findIndexedVar(st.var)
 
   if not self:typeIsEqual(res.type, var.type) then
       self.error("Tried to assing '%s' value to '%s' var", self:strType(res.type), self:strType(var.type))
@@ -589,13 +631,15 @@ function Compiler:codeFunc(func)
     local funcRawReturnType = self:getRawType(func.type)
 
     if funcRawReturnType == types.array then
-        self.emit("ret ptr")
+      local temp = self:newTemp()
+      self.emit("%s = alloca ptr", temp)
+      self.emit("ret ptr %s", temp)
     elseif funcRawReturnType == types.void then
-        self.emit("ret void")
+      self.emit("ret void")
     elseif funcRawReturnType == types.int then
-        self.emit("ret i32 0")
+      self.emit("ret i32 0")
     elseif funcRawReturnType == types.double then
-        self.emit("ret double 0.0")
+      self.emit("ret double 0.0")
     end
 
     self.emit("}")
@@ -658,7 +702,7 @@ local premable = [[
 @.strD = private unnamed_addr constant [7 x i8] c"%.16g\0A\00"
 
 declare dso_local i32 @printf(i8*, ...)
-declare ptr @malloc(i64 noundef)
+declare ptr @malloc(i64)
 
 define internal void @printI(i32 %x) {
   %y = call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.str, i64 0, i64 0), i32 %x)

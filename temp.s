@@ -48,12 +48,21 @@ Lloh3:
 _foo:                                   ; @foo
 	.cfi_startproc
 ; %bb.0:
-	sub	sp, sp, #16
-	.cfi_def_cfa_offset 16
-	mov	w8, w0
-	mul	w0, w0, w0
-	str	w8, [sp, #12]
-	add	sp, sp, #16
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
+	.cfi_offset w30, -8
+	.cfi_offset w29, -16
+	lsl	w8, w0, #2
+	str	w0, [sp, #12]
+	sxtw	x8, w8
+	mov	x0, x8
+	bl	_malloc
+	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
+	mov	w8, #120
+	str	x0, [sp]
+	str	w8, [x0, #24]
+	add	sp, sp, #32
 	ret
 	.cfi_endproc
                                         ; -- End function
@@ -67,16 +76,14 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	w0, #100
+	mov	w0, #10
 	bl	_foo
-	lsl	w8, w0, #2
-	add	w8, w8, #240
-	sxtw	x0, w8
-	bl	_malloc
+	ldr	w8, [x0, #24]
+	str	x0, [sp, #8]
+	mov	w0, w8
+	bl	_printI
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
-	mov	x8, x0
 	mov	w0, wzr
-	str	x8, [sp, #8]
 	add	sp, sp, #32
 	ret
 	.cfi_endproc

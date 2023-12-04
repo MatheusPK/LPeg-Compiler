@@ -1,8 +1,10 @@
-fun foo(a: int): int {
-    return a*a;
+fun foo(size: int): [int] {
+    var x: [int] = new [int](size);
+    x[6] = 120;
+    return x;
 }
 
 fun main(): int {
-    var y: [int] = new [int](10);
-    @y[1];
+    var a: [int] = foo(10);
+    @a[6];
 }
