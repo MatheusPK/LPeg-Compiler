@@ -1,0 +1,8 @@
+fun main() : int {
+    var x: [[int]] = new [[int]](1);
+    x[0] = new [int](1);
+    x[0][0] = 10;
+    var y: [int] = x[0];
+    @x[0][0];
+    @y[0];
+}

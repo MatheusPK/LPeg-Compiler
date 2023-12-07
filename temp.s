@@ -43,109 +43,26 @@ Lloh3:
 	.loh AdrpAdd	Lloh2, Lloh3
 	.cfi_endproc
                                         ; -- End function
-	.globl	_criaMatriz                     ; -- Begin function criaMatriz
+	.globl	_foo                            ; -- Begin function foo
 	.p2align	2
-_criaMatriz:                            ; @criaMatriz
+_foo:                                   ; @foo
 	.cfi_startproc
 ; %bb.0:
-	sub	sp, sp, #48
-	.cfi_def_cfa_offset 48
-	stp	x29, x30, [sp, #32]             ; 16-byte Folded Spill
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	lsl	w8, w0, #3
-	stp	w1, w0, [sp, #24]
+	lsl	w8, w0, #2
+	str	w0, [sp, #12]
 	sxtw	x8, w8
 	mov	x0, x8
 	bl	_malloc
-	str	wzr, [sp, #12]
-	str	x0, [sp, #16]
-LBB2_1:                                 ; %L10
-                                        ; =>This Inner Loop Header: Depth=1
-	ldr	w8, [sp, #12]
-	ldr	w9, [sp, #28]
-	cmp	w8, w9
-	b.ge	LBB2_3
-; %bb.2:                                ; %L11
-                                        ;   in Loop: Header=BB2_1 Depth=1
-	ldr	w8, [sp, #24]
-	lsl	w8, w8, #2
-	sxtw	x0, w8
-	bl	_malloc
-	ldr	w8, [sp, #12]
-	ldrsw	x9, [sp, #12]
-	ldr	x10, [sp, #16]
-	add	w8, w8, #1
-	str	x0, [x10, x9, lsl #3]
-	str	w8, [sp, #12]
-	b	LBB2_1
-LBB2_3:                                 ; %L12
-	ldp	x29, x30, [sp, #32]             ; 16-byte Folded Reload
-	ldr	x0, [sp, #16]
-	add	sp, sp, #48
-	ret
-	.cfi_endproc
-                                        ; -- End function
-	.globl	_printaMatriz                   ; -- Begin function printaMatriz
-	.p2align	2
-_printaMatriz:                          ; @printaMatriz
-	.cfi_startproc
-; %bb.0:
-	stp	x20, x19, [sp, #-32]!           ; 16-byte Folded Spill
-	.cfi_def_cfa_offset 32
-	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
-	add	x29, sp, #16
-	.cfi_def_cfa w29, 16
-	.cfi_offset w30, -8
-	.cfi_offset w29, -16
-	.cfi_offset w19, -24
-	.cfi_offset w20, -32
-	sub	sp, sp, #32
-	stp	wzr, w2, [x29, #-36]
-	stur	w1, [x29, #-28]
-	stur	x0, [x29, #-24]
-	b	LBB3_2
-LBB3_1:                                 ; %L48
-                                        ;   in Loop: Header=BB3_2 Depth=1
-	ldur	w8, [x29, #-36]
-	add	w8, w8, #1
-	stur	w8, [x29, #-36]
-LBB3_2:                                 ; %L37
-                                        ; =>This Loop Header: Depth=1
-                                        ;     Child Loop BB3_4 Depth 2
-	ldur	w8, [x29, #-36]
-	ldur	w9, [x29, #-28]
-	cmp	w8, w9
-	b.ge	LBB3_6
-; %bb.3:                                ; %L38
-                                        ;   in Loop: Header=BB3_2 Depth=1
-	mov	x8, sp
-	sub	x19, x8, #16
-	mov	sp, x19
-	stur	wzr, [x8, #-16]
-LBB3_4:                                 ; %L46
-                                        ;   Parent Loop BB3_2 Depth=1
-                                        ; =>  This Inner Loop Header: Depth=2
-	ldr	w8, [x19]
-	ldur	w9, [x29, #-32]
-	cmp	w8, w9
-	b.ge	LBB3_1
-; %bb.5:                                ; %L47
-                                        ;   in Loop: Header=BB3_4 Depth=2
-	ldursw	x8, [x29, #-36]
-	ldur	x9, [x29, #-24]
-	ldrsw	x10, [x19]
-	ldr	x8, [x9, x8, lsl #3]
-	ldr	w0, [x8, x10, lsl #2]
-	bl	_printI
-	ldr	w8, [x19]
-	add	w8, w8, #1
-	str	w8, [x19]
-	b	LBB3_4
-LBB3_6:                                 ; %L39
-	sub	sp, x29, #16
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
-	ldp	x20, x19, [sp], #32             ; 16-byte Folded Reload
+	mov	w8, #120
+	str	x0, [sp]
+	str	w8, [x0, #24]
+	add	sp, sp, #32
 	ret
 	.cfi_endproc
                                         ; -- End function
@@ -159,22 +76,17 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	w0, #2
-	mov	w1, #2
-	bl	_criaMatriz
-	mov	w8, #1
-	ldr	x9, [x0]
-	mov	w1, #2
-	mov	w2, #2
+	mov	w0, #10
+	bl	_foo
+	ldr	w8, [x0, #24]
 	str	x0, [sp, #8]
-	str	w8, [x9]
-	ldr	x9, [x0]
-	str	wzr, [x9, #4]
-	ldr	x9, [x0, #8]
-	str	wzr, [x9]
-	ldr	x9, [x0, #8]
-	str	w8, [x9, #4]
-	bl	_printaMatriz
+	mov	w0, w8
+	bl	_printI
+	ldr	x8, [sp, #8]
+	mov	w9, #20
+	mov	w0, #20
+	str	w9, [x8, #36]
+	bl	_printI
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
 	mov	w0, wzr
 	add	sp, sp, #32

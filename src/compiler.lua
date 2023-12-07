@@ -223,17 +223,12 @@ function Compiler:codeMalloc(reg, type, arraySize)
   self.emit("%s = call ptr @malloc(i64 %s)", reg, i64MallocSize)
 end
 
-function Compiler:codeGetElementPtr(res, type, var, index, varLoaded)
+function Compiler:codeGetElementPtr(res, type, var, index)
   local i64Index = self:newTemp()
+  local loadedVar = self:newTemp()
   self.emit("%s = sext i32 %s to i64", i64Index, index)
-  
-  if not varLoaded then
-    local temp = self:newTemp()
-    self.emit("%s = load ptr, ptr %s", temp, var)
-    var = temp
-  end
-
-  self.emit("%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, var, i64Index)
+  self.emit("%s = load ptr, ptr %s", loadedVar, var)
+  self.emit("%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, loadedVar, i64Index)
 end
 
 function Compiler:findVar(id)
@@ -269,19 +264,19 @@ function Compiler:isValidReturnType(retType)
   return self:typeIsEqual(expectedReturnType, retType), expectedReturnType
 end
 
-function Compiler:exp(value, type, varWasLoaded)
-  return {value = value, type = type, varWasLoaded = varWasLoaded or false}
+function Compiler:exp(value, type)
+  return {value = value, type = type}
 end
 
 -- MARK: Expression Functions
-function Compiler:codeExp(exp)
+function Compiler:codeExp(exp, isFromIndexed)
   local tag = exp.tag
   if tag == "number int" then
     return self:codeExpNumberInt(exp)
   elseif tag == "number double" then
     return self:codeExpNumberDouble(exp)
   elseif tag == "var" then
-    return self:codeExpVar(exp)
+    return self:codeExpVar(exp, isFromIndexed)
   elseif tag == "indexed" then
     return self:codeExpIndexed(exp)
   elseif tag == "unarith" then
@@ -309,13 +304,16 @@ function Compiler:codeExpNumberDouble(exp)
   return self:exp(exp.num, {tag = "primitive type", type = types.double})
 end
 
-function Compiler:codeExpVar(exp)
+function Compiler:codeExpVar(exp, isFromIndexed)
   local var = self:findVar(exp.id)
   local regV = var.reg
   local res = self:newTemp()
   local varRawType = self:getRawType(var.type)
+  if isFromIndexed then
+    return self:exp(regV, var.type)
+  end
   self.emit("%s = load %s, ptr %s", res, typeToLLVM[varRawType], regV)
-  return self:exp(res, var.type, true)
+  return self:exp(res, var.type)
 end
 
 function Compiler:codeExpUnarith(exp)
@@ -405,32 +403,21 @@ function Compiler:codeExpNew(exp)
 end
 
 function Compiler:codeExpIndexed(exp)
-  local indexedValue = self:codeExp(exp.e)
+  local res = self:getExpIndexed(exp)
+  local loadedValue = self:newTemp()
+  self.emit("%s = load %s, ptr %s", loadedValue, typeToLLVM[self:getRawType(res.type)], res.value)
+  return self:exp(loadedValue, res.type)
+end
+
+function Compiler:getExpIndexed(exp)
+  local indexedRes = exp.e.tag == "indexed" and self:getExpIndexed(exp.e) or self:codeExp(exp.e, true)
+  local indexedResType = self:getRawType(indexedRes.type)
+  if indexedResType ~= types.array then self.error("attempt to index a '%s' value", self:strType(indexedRes.type)) end
+  local res = self:newTemp()
+  local resType = self:getRawType(indexedRes.type.nestedType)
   local index = self:codeExp(exp.index)
-
-  if indexedValue.type.tag ~= "array type" then
-    self.error("attempt to index a '%s' value", self:strType(indexedValue.type))
-  end
-
-  local rawType = self:getRawType(indexedValue.type.nestedType)
-
-  local arrayPtrRes = self:newTemp()
-  self:codeGetElementPtr(arrayPtrRes, typeToLLVM[rawType], indexedValue.value, index.value, indexedValue.varWasLoaded)  
-
-  if indexedValue.type.nestedType.tag == "primitive type" then
-    local arrayValueRes = self:newTemp()
-    local arrayValueRawType = self:getRawType(indexedValue.type.nestedType)
-    self.emit("%s = load %s, ptr %s", arrayValueRes, typeToLLVM[arrayValueRawType], arrayPtrRes)
-    return self:exp(arrayValueRes, indexedValue.type.nestedType)
-  end
-
-  return self:exp(arrayPtrRes, indexedValue.type.nestedType)
-
-  -- local var = self:findIndexedVar(exp)
-  -- local arrayValueRes = self:newTemp()
-  -- local arrayValueRawType = self:getRawType(var.type)
-  -- self.emit("%s = load %s, ptr %s", arrayValueRes, typeToLLVM[arrayValueRawType], var.reg)
-  -- return self:exp(arrayValueRes, var.type)
+  self:codeGetElementPtr(res, typeToLLVM[resType], indexedRes.value, index.value)
+  return self:exp(res, indexedRes.type.nestedType)
 end
 
 -- MARK: Statement Functions

@@ -7,5 +7,6 @@ fun foo(size: int): [int] {
 fun main(): int {
     var a: [int] = foo(10);
     @a[6];
+    a[9] = 20;
     @a[9.5 as int];
 }
