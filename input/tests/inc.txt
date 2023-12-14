@@ -1,0 +1,17 @@
+r1 = load v
+r2 = add r1, 1
+store r2, v
+
+retorna r2
+
+++v
+
+--------------------- 
+
+r1 = load v
+r2 = add r1, 1
+store r2, v
+
+retorna r1
+
+v++

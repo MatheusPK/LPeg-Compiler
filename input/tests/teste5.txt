@@ -1,0 +1,4 @@
+fun main(): int {
+    var x: int;
+    x = x + x;
+}

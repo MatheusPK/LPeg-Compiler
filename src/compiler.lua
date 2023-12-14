@@ -225,10 +225,8 @@ end
 
 function Compiler:codeGetElementPtr(res, type, var, index)
   local i64Index = self:newTemp()
-  local loadedVar = self:newTemp()
   self.emit("%s = sext i32 %s to i64", i64Index, index)
-  self.emit("%s = load ptr, ptr %s", loadedVar, var)
-  self.emit("%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, loadedVar, i64Index)
+  self.emit("%s = getelementptr inbounds %s, ptr %s, i64 %s", res, type, var, i64Index)
 end
 
 function Compiler:findVar(id)
@@ -238,25 +236,6 @@ function Compiler:findVar(id)
     end
   end
   self.error("Variable '%s' not found", id)  
-end
-
-function Compiler:findIndexedVar(var)
-  if var.tag == "indexed" then
-    local indexedValue = self:findIndexedVar(var.e)
-    local index = self:codeExp(var.index)
-
-    if indexedValue.type.tag ~= "array type" then
-      self.error("attempt to index a '%s' value", self:strType(indexedValue.type))
-    end
-    local rawType = self:getRawType(indexedValue.type.nestedType)
-
-    local arrayPtrRes = self:newTemp()
-    self:codeGetElementPtr(arrayPtrRes, typeToLLVM[rawType], indexedValue.reg, index.value) 
-
-    return {reg = arrayPtrRes, type = indexedValue.type.nestedType}
-  elseif var.tag == "var" then
-    return self:findVar(var.id)
-  end
 end
 
 function Compiler:isValidReturnType(retType)
@@ -269,16 +248,18 @@ function Compiler:exp(value, type)
 end
 
 -- MARK: Expression Functions
-function Compiler:codeExp(exp, isFromIndexed)
+function Compiler:codeExp(exp)
   local tag = exp.tag
   if tag == "number int" then
     return self:codeExpNumberInt(exp)
   elseif tag == "number double" then
     return self:codeExpNumberDouble(exp)
-  elseif tag == "var" then
-    return self:codeExpVar(exp, isFromIndexed)
-  elseif tag == "indexed" then
+  elseif tag == "varExp" then
+    return self:codeExpVar(exp)
+  elseif tag == "indexed" then 
     return self:codeExpIndexed(exp)
+  elseif tag == "simpleVar" then
+    return self:codeExpSimpleVar(exp)
   elseif tag == "unarith" then
     return self:codeExpUnarith(exp)
   elseif tag == "binarith" then
@@ -304,16 +285,40 @@ function Compiler:codeExpNumberDouble(exp)
   return self:exp(exp.num, {tag = "primitive type", type = types.double})
 end
 
-function Compiler:codeExpVar(exp, isFromIndexed)
+function Compiler:codeExpSimpleVar(exp)
   local var = self:findVar(exp.id)
-  local regV = var.reg
-  local res = self:newTemp()
-  local varRawType = self:getRawType(var.type)
-  if isFromIndexed then
-    return self:exp(regV, var.type)
+  return self:exp(var.reg, var.type)
+end
+
+function Compiler:codeExpVar(exp)
+  local varAddress = self:codeExp(exp.var)
+  local varAddressRawType = self:getRawType(varAddress.type)
+  
+  local varValue = self:newTemp()
+  self.emit("%s = load %s, ptr %s", varValue, typeToLLVM[varAddressRawType], varAddress.value)
+
+  return self:exp(varValue, varAddress.type)
+end
+
+function Compiler:codeExpIndexed(exp)
+  local array = self:codeExp(exp.e)
+  local arrayRawType = self:getRawType(array.type)
+  local index = self:codeExp(exp.index)
+  local indexRawType = self:getRawType(index.type)
+
+  if arrayRawType ~= types.array then
+    self.error("attempt to index a '%s' value", self:strType(array.type))
   end
-  self.emit("%s = load %s, ptr %s", res, typeToLLVM[varRawType], regV)
-  return self:exp(res, var.type)
+
+  if indexRawType ~= types.int then
+    self.error("index must be int, but is '%s'", self:strType(index.type))
+  end
+
+  local res = self:newTemp()
+  local resType = self:getRawType(array.type.nestedType)
+  self:codeGetElementPtr(res, typeToLLVM[resType], array.value, index.value)
+ 
+  return self:exp(res, array.type.nestedType)
 end
 
 function Compiler:codeExpUnarith(exp)
@@ -400,24 +405,6 @@ function Compiler:codeExpNew(exp)
   self:codeMalloc(res, expType.nestedType, size.value)
 
   return self:exp(res, exp.type)
-end
-
-function Compiler:codeExpIndexed(exp)
-  local res = self:getExpIndexed(exp)
-  local loadedValue = self:newTemp()
-  self.emit("%s = load %s, ptr %s", loadedValue, typeToLLVM[self:getRawType(res.type)], res.value)
-  return self:exp(loadedValue, res.type)
-end
-
-function Compiler:getExpIndexed(exp)
-  local indexedRes = exp.e.tag == "indexed" and self:getExpIndexed(exp.e) or self:codeExp(exp.e, true)
-  local indexedResType = self:getRawType(indexedRes.type)
-  if indexedResType ~= types.array then self.error("attempt to index a '%s' value", self:strType(indexedRes.type)) end
-  local res = self:newTemp()
-  local resType = self:getRawType(indexedRes.type.nestedType)
-  local index = self:codeExp(exp.index)
-  self:codeGetElementPtr(res, typeToLLVM[resType], indexedRes.value, index.value)
-  return self:exp(res, indexedRes.type.nestedType)
 end
 
 -- MARK: Statement Functions
@@ -566,9 +553,11 @@ function Compiler:codeStatPrint(st)
   local expType = exp.type
   local expRawType = self:getRawType(expType)
   if expRawType == types.double then
-      self.emit("call void @printD(double %s)", reg)
+    self.emit("call void @printD(double %s)", reg)
+  elseif expRawType == types.int then
+    self.emit("call void @printI(i32 %s)", reg)
   else
-      self.emit("call void @printI(i32 %s)", reg)
+    self.error("attemp to print '%s' value", self:strType(exp.type))
   end
 end
 
@@ -589,17 +578,16 @@ function Compiler:codeStatCreateVar(st)
 end
 
 function Compiler:codeStatAssignAss(st)
-  local res = self:codeExp(st.e)
-  local regE = res.value
-  local var = self:findIndexedVar(st.var)
+  local var = self:codeExp(st.var)
+  local exp = self:codeExp(st.e)
 
-  if not self:typeIsEqual(res.type, var.type) then
-      self.error("Tried to assing '%s' value to '%s' var", self:strType(res.type), self:strType(var.type))
+  if not self:typeIsEqual(exp.type, var.type) then
+      self.error("Tried to assing '%s' value to '%s' var", self:strType(exp.type), self:strType(var.type))
   end
 
-  local rawResType = self:getRawType(res.type)
+  local rawExpType = self:getRawType(exp.type)
 
-  self.emit("store %s %s, ptr %s", typeToLLVM[rawResType], regE, var.reg)
+  self.emit("store %s %s, ptr %s", typeToLLVM[rawExpType], exp.value, var.value)
 end
 
 -- MARK: Prog Functions

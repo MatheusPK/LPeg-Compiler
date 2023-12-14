@@ -49,10 +49,14 @@ local function foldCast(t)
     return res
 end
 
+local function varToExp(var)
+    return {tag = "varExp", var = var}
+end
+
 local function foldIndexed(t)
     local res = t[1]
     for i = 2, #t, 1 do
-        res = {tag = "indexed", e = res, index = t[i]}
+        res = {tag = "indexed", e = varToExp(res), index = t[i]}
     end
 
     return res
@@ -113,7 +117,6 @@ local opComp = (igualdade + diferenca + maiorIgual + menorIgual + maior + menor)
 local primary = lpeg.V "primary"
 local postfix = lpeg.V"postfix"
 local postfixCast = lpeg.V"postfixCast"
-local postfixIndexed = lpeg.V"postfixIndexed"
 local factor = lpeg.V "factor"
 local expM = lpeg.V "expM"
 local expA = lpeg.V "expA"
@@ -143,7 +146,7 @@ grammar.prog = lpeg.P {"defs",
     block = OB * stats * CB / node("block", "body"),
     stat = Prt * exp / node("print", "e")
         + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * CL * type * (Eq * (exp))^0 / node("createVar", "id", "type", "e")
-        + varAssign * Eq * exp / node("assignVar", "var", "e")
+        + var * Eq * exp / node("assignVar", "var", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
         + call
@@ -154,17 +157,15 @@ grammar.prog = lpeg.P {"defs",
     new = Rw"new" * type * OP * exp * CP / node("new", "type", "size"),
     arguments = lpeg.Ct((Id * CL * type * (CM * Id * CL * type)^0)^-1) / foldArgs,
     parameters = lpeg.Ct((exp * (CM * exp)^0)^-1),
-    var = Id / node("var", "id"),
-    varAssign = lpeg.Ct(var * (OBK * exp * CBK)^0) / foldIndexed,
+    var = lpeg.Ct((Id / node("simpleVar", "id")) * (OBK * exp * CBK)^0) / foldIndexed,
     primary = double / node("number double", "num")
         + integer / node("number int", "num") 
         + OP * exp * CP 
         + new
-        + var,
+        + var / varToExp,
     postfix = call + primary,
     postfixCast = lpeg.Ct((postfix * (Rw"as" * type)^0)) / foldCast,
-    postfixIndexed = lpeg.Ct((postfixCast * (OBK * exp * CBK)^0)) / foldIndexed,
-    factor = postfixIndexed
+    factor = postfixCast
             + opUn * factor / node("unarith", "op", "e"),
     expM = lpeg.Ct(factor * (opM * factor) ^ 0) / fold,
     expA = lpeg.Ct(expM * (opA * expM) ^ 0) / fold,
