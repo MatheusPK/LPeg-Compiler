@@ -1,11 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
-
-void foo(int a) {
-    a = 20;
-}
-
-void a() {
-    int ** c;
-    foo(c[0][0] + 1);
+int main() {
+    int a = 1;
+    double b = 1.5;
+    b++;
+    a ++;
+    -- a;
+    printf("%f\n", b);
+    printf("%d\n", a);
+    return 0;
 }

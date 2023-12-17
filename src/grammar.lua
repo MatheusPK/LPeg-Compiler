@@ -62,6 +62,14 @@ local function foldIndexed(t)
     return res
 end
 
+local function foldInc(t)
+    return {tag = "inc", incType = t.tag, varAddress = t.var, varExp = varToExp(t.var), op = "++"}
+end
+
+local function foldDec(t)
+    return {tag = "dec", decType = t.tag, varAddress = t.var, varExp = varToExp(t.var), op = "--"}
+end
+
 local function I(msg)
     return lpeg.P(function() print(msg); return true end)
 end
@@ -103,6 +111,8 @@ local double = digit^0 * lpeg.P"." * digit^1 / tonumber * S
 local opA = lpeg.C(lpeg.S("+-")) * S
 local opM = lpeg.C(lpeg.S("*/")) * S
 local opUn = lpeg.C("-") * S
+local opInc = "++" * S
+local opDec = "--" * S
 
 local Id = lpeg.C(alpha * alphanum ^ 0) * S
 
@@ -130,6 +140,13 @@ local call = lpeg.V"call"
 local type = lpeg.V"type"
 local new = lpeg.V"new"
 local var = lpeg.V"var"
+local varExp = lpeg.V"varExp"
+local preInc = lpeg.V"preInc"
+local postInc = lpeg.V"postInc"
+local preDec = lpeg.V"preDec"
+local postDec = lpeg.V"postDec"
+local dec = lpeg.V"dec"
+local inc = lpeg.V"inc"
 local varAssign = lpeg.V"varAssign"
 local arguments = lpeg.V"arguments"
 local parameters = lpeg.V"parameters"
@@ -146,6 +163,8 @@ grammar.prog = lpeg.P {"defs",
     block = OB * stats * CB / node("block", "body"),
     stat = Prt * exp / node("print", "e")
         + Rw "var" * lpeg.Cmt(Id, isValidIdentifier) * CL * type * (Eq * (exp))^0 / node("createVar", "id", "type", "e")
+        + inc
+        + dec
         + var * Eq * exp / node("assignVar", "var", "e")
         + Rw"if" * exp * block * (Rw"else" * block)^-1 / node("if", "cond", "th", "els")
         + Rw"while" * exp * block / node("while", "cond", "body")
@@ -158,10 +177,18 @@ grammar.prog = lpeg.P {"defs",
     arguments = lpeg.Ct((Id * CL * type * (CM * Id * CL * type)^0)^-1) / foldArgs,
     parameters = lpeg.Ct((exp * (CM * exp)^0)^-1),
     var = lpeg.Ct((Id / node("simpleVar", "id")) * (OBK * exp * CBK)^0) / foldIndexed,
+    preInc = (opInc * var) / node("preInc", "var"),
+    postInc = (var * opInc) / node("postInc", "var"),
+    preDec = (opDec * var) / node("preDec", "var"),
+    postDec = (var * opDec) / node("postDec", "var"),
+    inc = (preInc + postInc) / foldInc,
+    dec = (preDec + postDec) / foldDec,
     primary = double / node("number double", "num")
         + integer / node("number int", "num") 
         + OP * exp * CP 
         + new
+        + inc
+        + dec 
         + var / varToExp,
     postfix = call + primary,
     postfixCast = lpeg.Ct((postfix * (Rw"as" * type)^0)) / foldCast,

@@ -1,10 +1,10 @@
+fun foo(n: int) : [int] {
+    var x: [int] = new [int](n);
+    x[0] = 999;
+    return x;
+}
+
 fun main(): int {
-    var x: [[int]] = new [[int]](1);
-    x[0] = new [int](1);
-    x[0][0] = 15;
-    var y: [int];
-    y = x[0];
-    y[0] = 20;
-    @y[0];
-    @x[0][0];
+    var x: [int] = foo(10);
+    @x[0];
 }

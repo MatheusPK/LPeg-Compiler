@@ -57,6 +57,17 @@ local binAOps = {
   }
 }
 
+local incDecOps = {
+  ["++"] = {
+    [types.int] = "add",
+    [types.double] = "fadd"
+  },
+  ["--"] = {
+    [types.int] = "sub",
+    [types.double] = "fsub"
+  }
+}
+
 local binCOps = {
   [">="] = {
     [types.int] = "sge",
@@ -187,6 +198,21 @@ function Compiler:codeEmptyVar(id, reg, varType)
   self:createVar(id, varType, reg)
 end
 
+function Compiler:codeIncDec(op, type, res, varExpReg, varAddressReg)
+  local rawType = self:getRawType(type)
+
+  if rawType ~= types.int and rawType ~= types.double then
+    self.error("Attempt to increment a '%s' value", self:strType(type))
+  end
+
+  local res = self:newTemp()
+  local type = typeToLLVM[rawType]
+  local opBinarith = incDecOps[op][rawType]
+
+  self.emit("%s = %s %s %s, 1", res, opBinarith, type, varExpReg)
+  self.emit("store %s %s, ptr %s\n", type, res, varAddressReg)
+end
+
 function Compiler:codeVar(id, reg, value, expType, varType)
   if not self:typeExists(varType) then
     self.error("declaring a var with type '%s' that does not exists", self:strType(expType))
@@ -272,6 +298,10 @@ function Compiler:codeExp(exp)
     return self:codeExpCast(exp)
   elseif tag == "new" then
     return self:codeExpNew(exp)
+  elseif tag == "inc" then
+    return self:codeExpInc(exp)
+  elseif tag == "dec" then
+    return self:codeExpDec(exp)
   else
     self.error("'%s': expression not yet implemented", tag)
   end
@@ -407,6 +437,42 @@ function Compiler:codeExpNew(exp)
   return self:exp(res, exp.type)
 end
 
+function Compiler:codeExpInc(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+
+  local res = self:newTemp()
+  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+
+  if exp.incType == "preInc" then
+    return self:exp(res, varExp.type)
+  end
+
+  if exp.incType == "postInc" then
+    return self:exp(varExp.value, varExp.type)
+  end
+
+  self.error("Invalid incType '%s'", exp.incType)
+end
+
+function Compiler:codeExpDec(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+
+  local res = self:newTemp()
+  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+
+  if exp.incType == "preDec" then
+    return self:exp(res, varExp.type)
+  end
+
+  if exp.incType == "postDec" then
+    return self:exp(varExp.value, varExp.type)
+  end
+
+  self.error("Invalid incType '%s'", exp.incType)
+end
+
 -- MARK: Statement Functions
 function Compiler:codeStat(st)
     local tag = st.tag
@@ -428,6 +494,10 @@ function Compiler:codeStat(st)
       self:codeStatCreateVar(st)
     elseif tag == "assignVar" then
       self:codeStatAssignAss(st)
+    elseif tag == "inc" then
+      self:codeStatInc(st)
+    elseif tag == "dec" then
+      self:codeStatDec(st)
     else
         self.error("'%s': statement not yet implemented", tag)
     end
@@ -588,6 +658,32 @@ function Compiler:codeStatAssignAss(st)
   local rawExpType = self:getRawType(exp.type)
 
   self.emit("store %s %s, ptr %s", typeToLLVM[rawExpType], exp.value, var.value)
+end
+
+function Compiler:codeStatInc(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+
+  local res = self:newTemp()
+  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+end
+
+function Compiler:codeStatDec(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+
+  local res = self:newTemp()
+  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+
+  if exp.incType == "preDec" then
+    return self:exp(res, varExp.type)
+  end
+
+  if exp.incType == "postDec" then
+    return self:exp(varExp.value, varExp.type)
+  end
+
+  self.error("Invalid incType '%s'", exp.incType)
 end
 
 -- MARK: Prog Functions
