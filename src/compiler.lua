@@ -668,14 +668,14 @@ function Compiler:codeStatInc(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
   local res = self:newTemp()
-  self:codeInc(exp.op, varExp.type, res, varExp.value, varAddress.value)
+  self:codeInc(res, varAddress.type, varExp.value, varAddress.value)
 end
 
 function Compiler:codeStatDec(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
   local res = self:newTemp()
-  self:codeDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+  self:codeDec(res, varAddress.type, varExp.value, varAddress.value)
 end
 
 -- MARK: Prog Functions
