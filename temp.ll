@@ -19,15 +19,11 @@ define i32 @main() {
 %T0 = alloca i32
 store i32 0, ptr %T0
 %T1 = load i32, ptr %T0
-%T3 = add i32 %T1, 1
-store i32 %T3, ptr %T0
+%T2 = sub i32 %T1, 1
+store i32 %T2, ptr %T0
 
-%T4 = load i32, ptr %T0
-%T6 = add i32 %T4, 1
-store i32 %T6, ptr %T0
-
-call void @printI(i32 %T4)
-%T7 = load i32, ptr %T0
-call void @printI(i32 %T7)
+call void @printI(i32 %T1)
+%T3 = load i32, ptr %T0
+call void @printI(i32 %T3)
 ret i32 0
 }

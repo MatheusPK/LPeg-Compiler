@@ -53,8 +53,8 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	w8, #2
-	mov	w0, #1
+	mov	w8, #-1
+	mov	w0, wzr
 	str	w8, [sp, #12]
 	bl	_printI
 	ldr	w0, [sp, #12]

@@ -57,17 +57,6 @@ local binAOps = {
   }
 }
 
-local incDecOps = {
-  ["++"] = {
-    [types.int] = "add",
-    [types.double] = "fadd"
-  },
-  ["--"] = {
-    [types.int] = "sub",
-    [types.double] = "fsub"
-  }
-}
-
 local binCOps = {
   [">="] = {
     [types.int] = "sge",
@@ -198,19 +187,30 @@ function Compiler:codeEmptyVar(id, reg, varType)
   self:createVar(id, varType, reg)
 end
 
-function Compiler:codeIncDec(op, type, res, varExpReg, varAddressReg)
+function Compiler:codeInc(res, type, varExpReg, varAddressReg)
   local rawType = self:getRawType(type)
 
   if rawType ~= types.int and rawType ~= types.double then
     self.error("Attempt to increment a '%s' value", self:strType(type))
   end
 
-  local res = self:newTemp()
-  local type = typeToLLVM[rawType]
-  local opBinarith = incDecOps[op][rawType]
+  local addOp = binAOps["+"][rawType]
 
-  self.emit("%s = %s %s %s, 1", res, opBinarith, type, varExpReg)
-  self.emit("store %s %s, ptr %s\n", type, res, varAddressReg)
+  self.emit("%s = %s %s %s, 1", res, addOp, typeToLLVM[rawType], varExpReg)
+  self.emit("store %s %s, ptr %s\n", typeToLLVM[rawType], res, varAddressReg)
+end
+
+function Compiler:codeDec(res, type, varExpReg, varAddressReg)
+  local rawType = self:getRawType(type)
+
+  if rawType ~= types.int and rawType ~= types.double then
+    self.error("Attempt to decrement a '%s' value", self:strType(type))
+  end
+
+  local subOp = binAOps["-"][rawType]
+
+  self.emit("%s = %s %s %s, 1", res, subOp, typeToLLVM[rawType], varExpReg)
+  self.emit("store %s %s, ptr %s\n", typeToLLVM[rawType], res, varAddressReg)
 end
 
 function Compiler:codeVar(id, reg, value, expType, varType)
@@ -298,10 +298,14 @@ function Compiler:codeExp(exp)
     return self:codeExpCast(exp)
   elseif tag == "new" then
     return self:codeExpNew(exp)
-  elseif tag == "inc" then
-    return self:codeExpInc(exp)
-  elseif tag == "dec" then
-    return self:codeExpDec(exp)
+  elseif tag == "preInc" then
+    return self:codeExpPreInc(exp)
+  elseif tag == "postInc" then
+    return self:codeExpPostInc(exp)
+  elseif tag == "preDec" then
+    return self:codeExpPreDec(exp)
+  elseif tag == "postDec" then
+    return self:codeExpPostDec(exp)
   else
     self.error("'%s': expression not yet implemented", tag)
   end
@@ -437,40 +441,36 @@ function Compiler:codeExpNew(exp)
   return self:exp(res, exp.type)
 end
 
-function Compiler:codeExpInc(exp)
+function Compiler:codeExpPreInc(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
-
   local res = self:newTemp()
-  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
-
-  if exp.incType == "preInc" then
-    return self:exp(res, varExp.type)
-  end
-
-  if exp.incType == "postInc" then
-    return self:exp(varExp.value, varExp.type)
-  end
-
-  self.error("Invalid incType '%s'", exp.incType)
+  self:codeInc(res, varExp.type, varExp.value, varAddress.value)
+  return self:exp(res, varExp.type)
 end
 
-function Compiler:codeExpDec(exp)
+function Compiler:codeExpPostInc(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
-
   local res = self:newTemp()
-  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+  self:codeInc(res, varExp.type, varExp.value, varAddress.value)
+  return self:exp(varExp.value, varExp.type)
+end
 
-  if exp.incType == "preDec" then
-    return self:exp(res, varExp.type)
-  end
+function Compiler:codeExpPreDec(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+  local res = self:newTemp()
+  self:codeDec(res, varExp.type, varExp.value, varAddress.value)
+  return self:exp(res, varExp.type)
+end
 
-  if exp.incType == "postDec" then
-    return self:exp(varExp.value, varExp.type)
-  end
-
-  self.error("Invalid incType '%s'", exp.incType)
+function Compiler:codeExpPostDec(exp)
+  local varAddress = self:codeExp(exp.varAddress)
+  local varExp = self:codeExp(exp.varExp)
+  local res = self:newTemp()
+  self:codeDec(res, varExp.type, varExp.value, varAddress.value)
+  return self:exp(varExp.value, varExp.type)
 end
 
 -- MARK: Statement Functions
@@ -494,9 +494,13 @@ function Compiler:codeStat(st)
       self:codeStatCreateVar(st)
     elseif tag == "assignVar" then
       self:codeStatAssignAss(st)
-    elseif tag == "inc" then
+    elseif tag == "preInc" then
       self:codeStatInc(st)
-    elseif tag == "dec" then
+    elseif tag == "postInc" then
+      self:codeStatInc(st)
+    elseif tag == "preDec" then
+      self:codeStatDec(st)
+    elseif tag == "postDec" then
       self:codeStatDec(st)
     else
         self.error("'%s': statement not yet implemented", tag)
@@ -663,27 +667,15 @@ end
 function Compiler:codeStatInc(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
-
   local res = self:newTemp()
-  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
+  self:codeInc(exp.op, varExp.type, res, varExp.value, varAddress.value)
 end
 
 function Compiler:codeStatDec(exp)
   local varAddress = self:codeExp(exp.varAddress)
   local varExp = self:codeExp(exp.varExp)
-
   local res = self:newTemp()
-  self:codeIncDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
-
-  if exp.incType == "preDec" then
-    return self:exp(res, varExp.type)
-  end
-
-  if exp.incType == "postDec" then
-    return self:exp(varExp.value, varExp.type)
-  end
-
-  self.error("Invalid incType '%s'", exp.incType)
+  self:codeDec(exp.op, varExp.type, res, varExp.value, varAddress.value)
 end
 
 -- MARK: Prog Functions

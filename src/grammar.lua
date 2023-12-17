@@ -62,12 +62,8 @@ local function foldIndexed(t)
     return res
 end
 
-local function foldInc(t)
-    return {tag = "inc", incType = t.tag, varAddress = t.var, varExp = varToExp(t.var), op = "++"}
-end
-
-local function foldDec(t)
-    return {tag = "dec", decType = t.tag, varAddress = t.var, varExp = varToExp(t.var), op = "--"}
+local function foldIncDec(t)
+    return {tag = t.tag, varAddress = t.var, varExp = varToExp(t.var)}
 end
 
 local function I(msg)
@@ -181,8 +177,8 @@ grammar.prog = lpeg.P {"defs",
     postInc = (var * opInc) / node("postInc", "var"),
     preDec = (opDec * var) / node("preDec", "var"),
     postDec = (var * opDec) / node("postDec", "var"),
-    inc = (preInc + postInc) / foldInc,
-    dec = (preDec + postDec) / foldDec,
+    inc = (preInc + postInc) / foldIncDec,
+    dec = (preDec + postDec) / foldIncDec,
     primary = double / node("number double", "num")
         + integer / node("number int", "num") 
         + OP * exp * CP 
