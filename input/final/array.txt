@@ -2,7 +2,7 @@ fun bigger(a: [int], size: int): int {
     var x: int = 0;
     var indiceDoMaior: int = x;
     while x < size - 1 {
-        if a[x] < a[x + 1] {
+        if a[indiceDoMaior] < a[x + 1] {
             indiceDoMaior = x + 1;
         };
         x = x + 1;
