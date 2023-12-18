@@ -1,0 +1,13 @@
+fun main(): int {
+    var x: int;
+    x = 10;
+    @x;
+
+    var y: int = 5;
+    x = y;
+    @x;
+    @y;
+
+    var z:double = 10.45;
+    @z;
+}

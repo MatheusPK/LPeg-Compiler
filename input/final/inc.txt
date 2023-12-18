@@ -1,0 +1,35 @@
+fun printaArray(array: [int], size: int) {
+    var i: int = 0;
+    while i < size {
+        @array[i++];
+    };
+}
+
+fun foo(array: [int], size: int) {
+    var i: int = 0;
+    while i < size {
+        array[i]++;
+        i++;
+    }
+}
+
+fun main(): int {
+    var x: int = 0;
+    x++;
+    x--;
+    x++;
+    x++;
+    x--;
+    @x++;
+    @x--;
+    @x;
+    var y: [int] = new [int](5);
+    y[0] = 10;
+    y[1] = 20;
+    y[2] = 30;
+    y[3] = 40;
+    y[4] = 50;
+    printaArray(y, 5);
+    foo(y, 5);
+    printaArray(y, 5);
+}

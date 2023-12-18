@@ -1,0 +1,7 @@
+fun main() : int {
+    var x: int = 0;
+    while x < 10 {
+        @x;
+        x++;
+    }
+}

@@ -123,6 +123,41 @@ function Compiler:codeCond(exp, Ltrue, Lfalse)
   self.emit("br i1 %s, label %%%s, label %%%s", aux, Ltrue, Lfalse)
 end
 
+function Compiler:implicitCastBinarithExp(exp1, exp2, targetType)
+  local exp1RawType = self:getRawType(exp1.type) 
+  local exp2RawType = self:getRawType(exp2.type)
+  local castedExp1 = exp1
+  local castedExp2 = exp2
+
+  if exp1RawType == targetType then
+    castedExp2.value = self:codeCast(exp2.value, exp2.type, exp1.type)
+    castedExp2.type = exp1.type
+  elseif exp2RawType == targetType then
+    castedExp1.value = self:codeCast(exp1.value, exp1.type, exp2.type)
+    castedExp1.type = exp2.type
+  else
+    self.error("Implicit Cast failed")
+  end
+  
+  return castedExp1, castedExp2
+end
+
+function Compiler:implicitCastExpToInt(exp)
+  local castedExp = exp
+  local targetType = {tag = "primitive type", type = types.int}
+  castedExp.value = self:codeCast(exp.value, exp.type, targetType)
+  castedExp.type = targetType
+  return castedExp
+end
+
+function Compiler:implicitCastExpToDouble(exp)
+  local castedExp = exp
+  local targetType = {tag = "primitive type", type = types.double}
+  castedExp.value = self:codeCast(exp.value, exp.type, targetType)
+  castedExp.type = targetType
+  return castedExp
+end
+
 function Compiler:codeCast(value, baseType, targetType)
   local res = self:newTemp()
   local baseRawType = self:getRawType(baseType)
@@ -213,20 +248,26 @@ function Compiler:codeDec(res, type, varExpReg, varAddressReg)
   self.emit("store %s %s, ptr %s\n", typeToLLVM[rawType], res, varAddressReg)
 end
 
-function Compiler:codeVar(id, reg, value, expType, varType)
+function Compiler:codeVar(id, reg, exp, varType)
   if not self:typeExists(varType) then
-    self.error("declaring a var with type '%s' that does not exists", self:strType(expType))
+    self.error("declaring a var with type '%s' that does not exists", self:strType(exp.type))
   end
 
-  if not self:typeIsEqual(expType, varType) then
-    self.error("code var: var type and expression type mismatch expression type '%s', var type '%s'", self:strType(expType), self:strType(varType))
-  end
-
-  local expRawType = self:getRawType(expType)
+  local expRawType = self:getRawType(exp.type)
   local varRawType = self:getRawType(varType)
 
+  if not self:typeIsEqual(exp.type, varType) then
+    if varRawType == types.double and expRawType == types.int then
+      exp = self:implicitCastExpToDouble(exp)
+    elseif varRawType == types.int and expRawType == types.double then
+      exp = self:implicitCastExpToInt(exp)
+    else
+      self.error("code var: var type and expression type mismatch expression type '%s', var type '%s'", self:strType(exp.type), self:strType(varType))
+    end
+  end
+
   self.emit("%s = alloca %s", reg, typeToLLVM[expRawType])
-  self.emit("store %s %s, ptr %s", typeToLLVM[varRawType], value, reg)
+  self.emit("store %s %s, ptr %s", typeToLLVM[varRawType], exp.value, reg)
   self:createVar(id, varType, reg)
 end
 
@@ -367,9 +408,15 @@ end
 function Compiler:codeExpBinarith(exp)
   local r1 = self:codeExp(exp.e1)
   local r2 = self:codeExp(exp.e2)
+  local r1RawType = self:getRawType(r1.type)
+  local r2RawType = self:getRawType(r2.type)
 
   if not self:typeIsEqual(r1.type, r2.type) then
-      self.error("Invalid binAops type")
+    if r1RawType == types.array or r2RawType == types.array then
+      self.error("Attempt to perform arithmetic on array value")
+    end
+    
+    r1, r2 = self:implicitCastBinarithExp(r1, r2, types.double)
   end
 
   local r1RawType = self:getRawType(r1.type)
@@ -385,12 +432,16 @@ end
 function Compiler:codeExpBinarithComp(exp)
   local r1 = self:codeExp(exp.e1)
   local r2 = self:codeExp(exp.e2)
+  local r1RawType = self:getRawType(r1.type)
+  local r2RawType = self:getRawType(r2.type)
 
   if not self:typeIsEqual(r1.type, r2.type) then
-      self.error("Invalid binComp Type type")
-  end
+    if r1RawType == types.array or r2RawType == types.array then
+      self.error("Attempt to compare array value")
+    end
 
-  local r1RawType = self:getRawType(r1.type)
+    r1, r2 = self:implicitCastBinarithExp(r1, r2, types.double)
+  end
 
   local opType = typeToLLVM[r1RawType]
   local opBinarithComp = binCOps[exp.op][r1RawType]
@@ -401,10 +452,7 @@ function Compiler:codeExpBinarithComp(exp)
 
   self.emit("%s = %s %s %s %s, %s", res1, compCommand, opBinarithComp, opType, r1.value, r2.value)
   self.emit("%s = zext i1 %s to i32", res2, res1)
-  return self:exp(res2, {
-      tag = "primitive type",
-      t = types.int
-  })
+  return self:exp(res2, {tag = "primitive type", type = types.int})
 end
 
 function Compiler:codeExpCall(exp)
@@ -416,9 +464,17 @@ end
 function Compiler:codeExpCast(exp)
   if not self:typeExists(exp.type) then
     self.error("cast: type '%s' does not exists", self:strType(exp.type))
-  end 
+  end
+  
+  if exp.type == types.array then
+    self.error("attempt to cast to array")
+  end
 
   local res = self:codeExp(exp.e)
+
+  if res.type == types.array then
+    self.error("attempt to cast array value")
+  end
 
   if self:typeIsEqual(res.type, exp.type) then
     -- self.error("cast: '%s' already a '%s' value", exp.e, exp.type) vira warning
@@ -429,10 +485,15 @@ end
 
 function Compiler:codeExpNew(exp)
   local size = self:codeExp(exp.size)
+  local sizeRawType = self:getRawType(size.type)
   local expType = exp.type
 
   if expType.tag ~= "array type" then
       self.error("invalid type for new, expected array type, but received '%s'", self:strType(exp.type))
+  end
+
+  if sizeRawType ~= types.int then
+    self.error("array size must be an int value")
   end
 
   local res = self:newTemp()
@@ -543,12 +604,23 @@ function Compiler:codeStatCall(st)
   for i, param in ipairs(paramsTable) do
       local paramRawType = self:getRawType(param.type)
       local paramValue = param.value
+      local argRawType = self:getRawType(func.argsType[i])
+      local castedParam = param
 
       if not self:typeIsEqual(param.type, func.argsType[i]) then
+        if argRawType == types.double and paramRawType == types.int then
+          castedParam = self:implicitCastExpToDouble(param)
+        elseif argRawType == types.int and paramRawType == types.double then
+          castedParam = self:implicitCastExpToInt(param)
+        else
           self.error("expected parameter of type '%s', but received type '%s'", self:strType(func.argsType[i]),
               self:strType(param.type))
+        end
       end
-      paramsString = paramsString .. typeToLLVM[paramRawType] .. " " .. paramValue .. ', '
+
+      local castedParamRawType = self:getRawType(castedParam.type)
+
+      paramsString = paramsString .. typeToLLVM[castedParamRawType] .. " " .. castedParam.value .. ', '
   end
   paramsString = paramsString:sub(1, -3)
 
@@ -569,7 +641,7 @@ function Compiler:codeStatReturn(st)
   local returnExp = ""
   local returnType = {
       tag = "primitive type",
-      t = types.void
+      type = types.void
   }
 
   if st.e and st.e ~= "" then
@@ -577,15 +649,29 @@ function Compiler:codeStatReturn(st)
       returnType = returnExp.type
   end
 
+  local returnRawType = self:getRawType(returnType)
+  local castedReturnExp = returnExp
+  local castedReturnType = returnType
+
   local isValidReturnType, expectedReturnType = self:isValidReturnType(returnType)
+
   if not isValidReturnType then
-      self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'",
+      local expectedReturnRawType = self:getRawType(expectedReturnType)
+      if expectedReturnRawType == types.double and returnRawType == types.int then
+        castedReturnExp = self:implicitCastExpToDouble(returnExp)
+      elseif expectedReturnRawType == types.int and returnRawType == types.double then
+        castedReturnExp = self:implicitCastExpToInt(returnExp)
+      else
+        self.error("wrong return type, function '%s' should be returning '%s', but is returning '%s'",
           self.currentFunc.name, self:strType(expectedReturnType), self:strType(returnType))
+      end
+
+      castedReturnType = castedReturnExp.type
   end
 
-  local rawReturnType = self:getRawType(returnType)
+  local castedReturnExpRawType = self:getRawType(castedReturnType)
 
-  self.emit("ret %s %s", typeToLLVM[rawReturnType], returnExp.value or "")
+  self.emit("ret %s %s", typeToLLVM[castedReturnExpRawType], castedReturnExp.value or "")
 end
 
 function Compiler:codeStatIf(st)
@@ -648,15 +734,23 @@ function Compiler:codeStatCreateVar(st)
   local expValue = exp.value
   local expType = exp.type
 
-  self:codeVar(st.id, reg, expValue, expType, varType)
+  self:codeVar(st.id, reg, exp, varType)
 end
 
 function Compiler:codeStatAssignAss(st)
   local var = self:codeExp(st.var)
   local exp = self:codeExp(st.e)
+  local varRawType = self:getRawType(var.type)
+  local expRawType = self:getRawType(exp.type)
 
   if not self:typeIsEqual(exp.type, var.type) then
+    if varRawType == types.double and expRawType == types.int then
+      exp = self:implicitCastExpToDouble(exp)
+    elseif varRawType == types.int and expRawType == types.double then
+      exp = self:implicitCastExpToInt(exp)
+    else
       self.error("Tried to assing '%s' value to '%s' var", self:strType(exp.type), self:strType(var.type))
+    end
   end
 
   local rawExpType = self:getRawType(exp.type)
@@ -752,7 +846,7 @@ function Compiler:codeFuncHeader(func)
     self.emit("define %s @%s(%s) {", typeToLLVM[funcRawType], func.name, args)
 
     for _, param in ipairs(params) do
-        self:codeVar(param.id, param.reg, param.value, param.type, param.type)
+        self:codeVar(param.id, param.reg, param, param.type)
     end
 end
 

@@ -4,10 +4,10 @@ fun foo(a: int, b: double): double {
 
 fun foo2(a: int) {
     @a;
-    return;
 }
 
 fun main(): int {
     @foo(1, 6.0);
-    var y: double = 10.0;
+    var y: double = 10.5;
+    foo2(y as int)
 }

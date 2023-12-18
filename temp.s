@@ -53,16 +53,21 @@ _main:                                  ; @main
 	stp	x29, x30, [sp, #16]             ; 16-byte Folded Spill
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	mov	w8, #2
-	mov	w0, #1
-	str	w8, [sp, #12]
-	bl	_printI
+	str	wzr, [sp, #12]
+LBB2_1:                                 ; %L1
+                                        ; =>This Inner Loop Header: Depth=1
+	ldr	w8, [sp, #12]
+	cmp	w8, #9
+	b.gt	LBB2_3
+; %bb.2:                                ; %L2
+                                        ;   in Loop: Header=BB2_1 Depth=1
 	ldr	w0, [sp, #12]
-	sub	w8, w0, #1
+	bl	_printI
+	ldr	w8, [sp, #12]
+	add	w8, w8, #1
 	str	w8, [sp, #12]
-	bl	_printI
-	ldr	w0, [sp, #12]
-	bl	_printI
+	b	LBB2_1
+LBB2_3:                                 ; %L3
 	ldp	x29, x30, [sp, #16]             ; 16-byte Folded Reload
 	mov	w0, wzr
 	add	sp, sp, #32

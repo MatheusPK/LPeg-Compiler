@@ -1,0 +1,9 @@
+fun main(): int {
+    var a: int = 10;
+    var b: int = 15;
+    if a > b {
+        @a;
+    } else {
+        @b + a;
+    };
+}

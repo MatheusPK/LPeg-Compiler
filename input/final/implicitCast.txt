@@ -1,0 +1,20 @@
+fun foo(a: int, b: double): double {
+    @a;
+    @b + 2.8;
+    return;
+}
+
+fun main(): int {
+    if 2.5 > 2 {
+        @1;
+    } else {
+        @2;
+    };
+
+    @ 2.5 + 4;
+
+    var x: double = 3;
+    @x;
+    var b: int = foo(2.5, 3);
+    @b;
+}
