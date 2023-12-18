@@ -177,7 +177,7 @@ function Compiler:typeExists(type)
 end
 
 function Compiler:typeIsEqual(typeA, typeB)
-  if typeA.tag ~= typeB.tag then return end
+  if typeA.tag ~= typeB.tag then return false end
 
   if typeA.tag == "primitive type" then
     return typeA.type == typeB.type
